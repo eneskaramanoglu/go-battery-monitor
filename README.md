@@ -102,13 +102,27 @@ Bu proje **MIT** lisanslıdır. GPL lisanslı projelerden kod kopyalanmaz veya �
 protokolleri kendi USB yakalamalarımız ve analizlerimizle çıkarılır. Kurallar:
 [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md). Araştırma notları: [docs/RESEARCH.md](docs/RESEARCH.md).
 
+## Sürüm yayınlama
+
+`v0.1.0` gibi bir etiket push'landığında GitHub Actions (`.github/workflows/release.yml`) testleri
+çalıştırır, amd64 ve arm64 exe'lerini sürüm bilgisiyle derler, zip + SHA256SUMS üretir ve GitHub
+Release yayınlar:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Yol haritası
 
-2. **Manifest + ikon** (`go-winres`): DPI farkındalığı, Common Controls v6.
-3. **Sürücüler** (önce elimizdeki donanım):
-   - Windows'un zaten bildiği Bluetooth pil seviyeleri (`DEVPKEY_Bluetooth_DeviceBattery`)
-   - DualSense / DualShock 4 (Bluetooth ve USB giriş raporu)
-   - ATK 8K fare alıcısı `373B:1278` (USB yakalamasıyla)
-   - ATK N9 Pro kulaklık `373B:11CB` (sanal COM portu)
-   - Xbox kumandaları (`Windows.Gaming.Input` / XInput)
-5. Kurulum paketi ve GitHub Actions ile otomatik sürüm.
+- [x] HID katmanı, tepsi, sürücü arayüzü, CI
+- [x] İkon, manifest (PerMonitorV2 DPI), sürüm bilgisi
+- [x] Bluetooth (Windows pil özelliği), XInput, DualSense sürücüleri
+- [x] Yüzde çizen tepsi ikonları, görev çubuğu metni, tema/DPI uyumu
+- [x] Cihaz takma / uykudan uyanma yenilemesi, Windows ile başlat
+- [x] Düşük pil bildirimi, ayarlar (eşik, gizli cihazlar, görünüm)
+- [x] Otomatik sürüm yayınlama (GitHub Actions)
+- [ ] ATK / Compx fare alıcıları: çerçeve formatı çözüldü, pil okuma donanımda doğrulanacak ([notlar](docs/protocols/compx.md))
+- [ ] ATK N9 Pro kulaklık (seri port protokolü)
+- [ ] DualShock 4, `Windows.Gaming.Input` ile Xbox kumandalarında gerçek yüzde
+- [ ] Ayarlar penceresi, çoklu dil (TR / EN)
