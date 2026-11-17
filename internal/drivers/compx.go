@@ -3,11 +3,9 @@ package drivers
 // ATK / VXE and other mice on the Compx receiver family (ATK vendor id 373B, Compx 3554).
 // Protocol notes: docs/protocols/compx.md (our own analysis of ATK's public web configurator).
 //
-// STATUS: NOT REGISTERED. The frame format below is confirmed on hardware (the 373B:1278
-// receiver answers with a valid checksum), but the battery read itself is not verified yet:
-// the receiver did not answer GetBatteryLevel on its own, and the vendor app sends an
-// identification exchange (DownLoadData) first. Until that sequence is verified on a real
-// mouse, this driver is not registered, so the app never sends these commands.
+// Verified on a 373B:1278 receiver: GetBatteryLevel answers 80 % / 4217 mV, matching other
+// software. When the radio link is idle the receiver can stay silent; then the vendor's
+// identification exchange (DownLoadData) is sent first and the battery asked again.
 //
 // Frame (16 bytes, output report 8 on vendor collection FF02:0002, answer = input report 8):
 //
@@ -16,8 +14,9 @@ package drivers
 //	bytes 2-3  EEPROM address (big endian), byte 4 valid data length, bytes 5..14 data
 //	byte 15    checksum = 0x55 - (0x08 + sum of bytes 0..14)
 //
-// Commands used here (read-only): 4 = GetBatteryLevel -> data: level %, charging flag,
-// voltage mV (big endian). WARNING: command 7 in this family is SetEEPROM; never send it.
+// Commands used here: 1 = DownLoadData (identification, changes nothing) and
+// 4 = GetBatteryLevel -> data: level %, charging flag, voltage mV (big endian).
+// WARNING: command 7 in this family is SetEEPROM and 9 RestoreFactory; never send them.
 
 import (
 	"strings"
@@ -30,13 +29,16 @@ import (
 const (
 	compxReportID      = 0x08
 	compxFrameLen      = 16
+	compxCmdHandshake  = 0x01 // DownLoadData
 	compxCmdGetBattery = 0x04
 )
 
 var compxVendors = []uint16{0x373B, 0x3554}
 
-// compxDriver is intentionally not registered yet (see STATUS above).
 type compxDriver struct{}
+
+// Registered before the generic drivers; the file name sorts before "zz_bluetooth.go".
+func init() { device.Register(compxDriver{}) }
 
 func (compxDriver) Name() string { return "compx" }
 
@@ -46,23 +48,29 @@ func (compxDriver) Poll(ctx *device.PollContext) {
 			if ctx.Claimed(c.VendorID, c.ProductID) {
 				continue // two collections of one product
 			}
+			key := "compx:" + hex4(c.VendorID) + ":" + hex4(c.ProductID)
 			r, ok := readCompx(c)
-			if !ok {
+			if !ok || !r.online {
+				// Mouse asleep or off: show the last reading, dimmed, if we have one.
+				if last, seen := compxLast.get(key); seen {
+					last.Asleep, last.Charging = true, false
+					ctx.Add(last, c.VendorID, c.ProductID)
+				} else {
+					ctx.Claim(c.VendorID, c.ProductID)
+				}
 				continue
 			}
-			if !r.online {
-				ctx.Claim(c.VendorID, c.ProductID) // receiver present, mouse off or asleep
-				continue
-			}
-			ctx.Add(device.Status{
-				Key:        "compx:" + hex4(c.VendorID) + ":" + hex4(c.ProductID),
+			s := device.Status{
+				Key:        key,
 				Name:       compxName(c),
 				Via:        compxVia(c),
 				Kind:       device.Mouse,
 				Percent:    r.percent,
 				Charging:   r.charging,
 				Millivolts: r.millivolts,
-			}, c.VendorID, c.ProductID)
+			}
+			compxLast.set(key, s)
+			ctx.Add(s, c.VendorID, c.ProductID)
 		}
 	}
 }
@@ -135,6 +143,8 @@ func parseCompxBattery(r []byte) (compxBattery, bool) {
 	}, true
 }
 
+// readCompx asks for the battery. A sleeping mouse leaves the request unanswered (the
+// receiver does not answer for it), which is reported as ok=false.
 func readCompx(c hid.Collection) (compxBattery, bool) {
 	d, err := hid.Open(c)
 	if err != nil {
@@ -142,22 +152,48 @@ func readCompx(c hid.Collection) (compxBattery, bool) {
 	}
 	defer d.Close()
 	d.Flush()
+	return compxAskBattery(d, 2*time.Second)
+}
+
+func compxAskBattery(d *hid.Device, wait time.Duration) (compxBattery, bool) {
 	if err := d.Write(compxRequest(compxCmdGetBattery), 300*time.Millisecond); err != nil {
 		return compxBattery{}, false
 	}
+	var b compxBattery
+	ok := compxAwait(d, wait, func(r []byte) bool {
+		var parsed bool
+		b, parsed = parseCompxBattery(r)
+		return parsed
+	})
+	return b, ok
+}
+
+// compxHandshakeRequest builds DownLoadData (command 1). Not sent by the driver: the receiver
+// answers it by itself and it does not wake a sleeping mouse. Kept for protocol tests.
+func compxHandshakeRequest(challenge [4]byte) []byte {
+	r := make([]byte, 1+compxFrameLen)
+	r[0], r[1], r[5] = compxReportID, compxCmdHandshake, 8
+	copy(r[6:10], challenge[:])
+	r[16] = compxChecksum(r[1:16])
+	return r
+}
+
+// compxAwait reads input reports until match accepts one or wait expires; other reports
+// (DPI change notifications...) are skipped.
+func compxAwait(d *hid.Device, wait time.Duration, match func([]byte) bool) bool {
 	buf := make([]byte, 64)
-	deadline := time.Now().Add(3 * time.Second) // the receiver asks the mouse over the air
+	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		n, err := d.Read(buf, 200*time.Millisecond)
-		if err != nil {
-			if err == hid.ErrTimeout {
-				continue
-			}
-			return compxBattery{}, false
+		if err == hid.ErrTimeout {
+			continue
 		}
-		if b, ok := parseCompxBattery(buf[:n]); ok {
-			return b, true
+		if err != nil {
+			return false
+		}
+		if match(buf[:n]) {
+			return true
 		}
 	}
-	return compxBattery{}, false
+	return false
 }

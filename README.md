@@ -28,6 +28,7 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 
 | Sürücü | Cihazlar | Kaynak |
 |---|---|---|
+| `compx` | ATK / VXE ve diğer Compx alıcılı fareler (`373B`, `3554`), ör. ATK 8K dongle `373B:1278` (gerçek cihazda test edildi). Fare uyurken son değer gri gösterilir | Kendi analizimiz: [docs/protocols/compx.md](docs/protocols/compx.md) |
 | `playstation` | DualSense, DualSense Edge: USB kabloyla; Bluetooth'ta yalnızca başka bir uygulama (ör. Steam) tam rapor modunu açtıysa. *Gerçek cihazda henüz test edilmedi.* | Giriş raporundaki pil baytı (pasif okuma) |
 | `xinput` | Xbox kumandaları ve onlara takılı kulaklıklar (kaba seviye: Empty / Low / Medium / Full) | Microsoft XInput API |
 | `bluetooth` | Windows'un pil seviyesini bildiği her Bluetooth cihaz (BLE fare/klavye, eller serbest kulaklıklar...) | Windows cihaz özelliği `DEVPKEY_Bluetooth_Battery` |
@@ -122,7 +123,7 @@ git push origin v0.1.0
 - [x] Cihaz takma / uykudan uyanma yenilemesi, Windows ile başlat
 - [x] Düşük pil bildirimi, ayarlar (eşik, gizli cihazlar, görünüm)
 - [x] Otomatik sürüm yayınlama (GitHub Actions)
-- [ ] ATK / Compx fare alıcıları: çerçeve formatı çözüldü, pil okuma donanımda doğrulanacak ([notlar](docs/protocols/compx.md))
+- [x] ATK / Compx fare alıcıları ([notlar](docs/protocols/compx.md))
 - [ ] ATK N9 Pro kulaklık (seri port protokolü)
 - [ ] DualShock 4, `Windows.Gaming.Input` ile Xbox kumandalarında gerçek yüzde
 - [ ] Ayarlar penceresi, çoklu dil (TR / EN)

@@ -28,6 +28,7 @@ func main() {
 	usage := flag.String("usage", "", "usage (hex)")
 	data := flag.String("hex", "", "output report bytes, report id first")
 	wait := flag.Duration("wait", 700*time.Millisecond, "how long to collect input reports")
+	listenAll := flag.Bool("all", false, "also print input reports from the device's other collections")
 	flag.Parse()
 
 	h := func(s string) uint16 { v, _ := strconv.ParseUint(s, 16, 16); return uint16(v) }
@@ -42,6 +43,29 @@ func main() {
 	cols, err := hid.Enumerate()
 	if err != nil {
 		log.Fatal(err)
+	}
+	// Also listen on every other collection of the same device: answers can come back on a
+	// different collection than the one the request was written to.
+	if *listenAll {
+		for _, c := range cols {
+			if c.VendorID != h(*vid) || c.ProductID != h(*pid) || c.InputLen == 0 ||
+				(c.UsagePage == h(*page) && c.Usage == h(*usage)) {
+				continue
+			}
+			d, err := hid.Open(c)
+			if err != nil {
+				continue
+			}
+			go func(c hid.Collection, d *hid.Device) {
+				buf := make([]byte, 128)
+				for {
+					n, err := d.Read(buf, 100*time.Millisecond)
+					if err == nil {
+						fmt.Printf("<- [%04X:%04X] % X\n", c.UsagePage, c.Usage, buf[:n])
+					}
+				}
+			}(c, d)
+		}
 	}
 	for _, c := range cols {
 		if c.VendorID != h(*vid) || c.ProductID != h(*pid) || c.UsagePage != h(*page) || c.Usage != h(*usage) {

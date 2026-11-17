@@ -41,10 +41,17 @@ Verified on hardware: the receiver answers with a frame whose checksum follows t
 
 ## Status
 
-- `GetBatteryLevel` alone got **no answer** within 3.5 s from the `373B:1278` receiver while the
-  mouse was awake. The vendor app always sends `DownLoadData` first in the same session, which
-  suggests an identification/unlock step. Not verified yet.
-- The driver (`internal/drivers/compx.go`) is therefore **not registered**.
+Verified on a `373B:1278` receiver (2026-11-18):
+
+- `GetBatteryLevel` answer: `08 04 00 00 00 02 50 00 10 79 … 6E` → 80 %, not charging,
+  0x1079 = 4217 mV (same values as other software reported at that moment). The answer comes
+  back on the same `FF02:0002` collection; byte 4 is the data length (2).
+- While the mouse is asleep the receiver does **not** answer `GetBatteryLevel` at all (no
+  "fail" status either). Moving the mouse wakes it and the next query answers.
+- `DownLoadData` is answered by the receiver itself (same identity bytes whatever the
+  challenge) and does not wake the mouse, so the driver does not send it.
+- The driver sends only `GetBatteryLevel`, waits 2 s, and shows the last reading dimmed
+  ("asleep") while the mouse sleeps.
 
 ## Incident log
 

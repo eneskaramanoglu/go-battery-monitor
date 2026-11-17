@@ -14,6 +14,24 @@ func TestCompxChecksumMatchesHardware(t *testing.T) {
 	}
 }
 
+func TestParseCompxBatteryHardwareAnswer(t *testing.T) {
+	// Real answers captured from a 373B:1278 receiver (ATK mouse at 80 %, 4217 mV).
+	answer := []byte{0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x50, 0x00, 0x10, 0x79, 0, 0, 0, 0, 0, 0, 0x6E}
+	b, ok := parseCompxBattery(answer)
+	if !ok || !b.online || b.percent != 80 || b.charging || b.millivolts != 4217 {
+		t.Fatalf("hardware answer = %+v, %v", b, ok)
+	}
+	hs := compxHandshakeRequest([4]byte{0x12, 0x34, 0x56, 0x78})
+	want := []byte{0x08, 0x01, 0, 0, 0, 0x08, 0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0, 0, 0, 0x30}
+	if string(hs) != string(want) {
+		t.Fatalf("handshake = % X, want % X", hs, want)
+	}
+	hsAnswer := []byte{0x08, 0x01, 0, 0, 0, 0x08, 0x47, 0xF2, 0x7A, 0xF2, 0x01, 0x34, 0x05, 0, 0, 0, 0x65}
+	if compxChecksum(hsAnswer[1:16]) != hsAnswer[16] {
+		t.Fatal("handshake answer checksum")
+	}
+}
+
 func TestParseCompxBattery(t *testing.T) {
 	frame := func(status, level, charging byte, mv uint16) []byte {
 		r := make([]byte, 17)
