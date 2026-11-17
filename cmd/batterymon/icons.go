@@ -45,6 +45,43 @@ func iconFor(s device.Status, threshold int) tray.Icon {
 	return tray.Icon{Key: s.Key, Text: text, Tooltip: tip.String(), Style: style}
 }
 
+// barItemFor turns a device reading into its taskbar entry.
+func barItemFor(s device.Status, threshold int) tray.BarItem {
+	ic := iconFor(s, threshold)
+	glyph := map[device.Kind]rune{
+		device.Mouse:    tray.GlyphMouse,
+		device.Keyboard: tray.GlyphKeyboard,
+		device.Headset:  tray.GlyphHeadset,
+		device.Gamepad:  tray.GlyphGamepad,
+	}[s.Kind]
+	if glyph == 0 {
+		glyph = tray.GlyphDevice
+	}
+	text := s.LevelText()
+	style := ic.Style
+	if style == tray.Charging {
+		style = tray.Normal // the charging bolt carries the colour, the number stays readable
+	}
+	return tray.BarItem{Glyph: glyph, Text: text, Style: style, Charging: s.Charging}
+}
+
+// summary is the app icon tooltip in taskbar mode: one line per device.
+func summary(st []device.Status) string {
+	var b strings.Builder
+	b.WriteString("Battery monitor")
+	for _, s := range st {
+		line := "\n" + s.Name + ": " + s.LevelText()
+		if s.Charging {
+			line += " (charging)"
+		}
+		if b.Len()+len(line) > 127 {
+			break
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
 func isLow(s device.Status, threshold int) bool {
 	if s.Percent >= 0 {
 		return s.Percent <= threshold

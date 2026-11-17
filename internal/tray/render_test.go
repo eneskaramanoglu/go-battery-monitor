@@ -31,6 +31,33 @@ func TestRenderedTextIsVisibleAndCentred(t *testing.T) {
 	}
 }
 
+func TestTaskbarRendering(t *testing.T) {
+	items := []BarItem{
+		{Glyph: GlyphHeadset, Text: "40%"},
+		{Glyph: GlyphMouse, Text: "85%", Charging: true},
+	}
+	one := PreviewBar(items[:1], 48, false)
+	two := PreviewBar(items, 48, false)
+	if one.Bounds().Dx() < 30 || two.Bounds().Dx() <= one.Bounds().Dx() {
+		t.Fatalf("widths: one item %d px, two items %d px", one.Bounds().Dx(), two.Bounds().Dx())
+	}
+	var opaque, green int
+	for y := range 48 {
+		for x := range two.Bounds().Dx() {
+			c := two.NRGBAAt(x, y)
+			if c.A > 128 {
+				opaque++
+				if c.G > 150 && c.R < 120 {
+					green++ // charging bolt
+				}
+			}
+		}
+	}
+	if opaque < 100 || green == 0 {
+		t.Fatalf("opaque=%d green(bolt)=%d", opaque, green)
+	}
+}
+
 func TestPaletteColours(t *testing.T) {
 	img := Preview("15", Low, false, 24)
 	var r, g int

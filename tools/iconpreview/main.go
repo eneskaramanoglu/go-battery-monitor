@@ -26,7 +26,28 @@ func main() {
 	}{{false, color.NRGBA{0x20, 0x20, 0x20, 255}}, {true, color.NRGBA{0xEE, 0xEE, 0xEE, 255}}}
 
 	cell := size*zoom + pad
-	img := image.NewNRGBA(image.Rect(0, 0, len(texts)*cell, len(styles)*len(themes)*cell))
+	barItems := []tray.BarItem{
+		{Glyph: tray.GlyphHeadset, Text: "40%"},
+		{Glyph: tray.GlyphMouse, Text: "85%", Charging: true},
+		{Glyph: tray.GlyphGamepad, Text: "12%", Style: tray.Low},
+		{Glyph: tray.GlyphKeyboard, Text: "Medium", Style: tray.Dim},
+	}
+	const barH, barZoom = 48, 2
+	barW := tray.PreviewBar(barItems, barH, false).Bounds().Dx() * barZoom
+	gridH := len(styles) * len(themes) * cell
+	img := image.NewNRGBA(image.Rect(0, 0, max(len(texts)*cell, barW), gridH+2*(barH*barZoom+pad)))
+	for ti, th := range themes {
+		bar := tray.PreviewBar(barItems, barH, th.light)
+		oy := gridH + ti*(barH*barZoom+pad)
+		for y := range barH * barZoom {
+			for x := range bar.Bounds().Dx() * barZoom {
+				c := bar.NRGBAAt(x/barZoom, y/barZoom)
+				a := int(c.A)
+				blend := func(f, b uint8) uint8 { return uint8((int(f)*a + int(b)*(255-a)) / 255) }
+				img.SetNRGBA(x, oy+y, color.NRGBA{blend(c.R, th.bg.R), blend(c.G, th.bg.G), blend(c.B, th.bg.B), 255})
+			}
+		}
+	}
 	row := 0
 	for _, th := range themes {
 		for _, st := range styles {

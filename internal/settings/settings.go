@@ -14,13 +14,20 @@ type Settings struct {
 	LowThreshold int      `json:"lowThreshold"` // percent at or below which a device counts as low
 	Notify       bool     `json:"notify"`       // show a notification when a device gets low
 	Hidden       []string `json:"hidden"`       // device keys whose icon is hidden
+	Display      string   `json:"display"`      // DisplayTaskbar or DisplayTray
 }
+
+// Display modes.
+const (
+	DisplayTaskbar = "taskbar" // text on the taskbar next to the notification area
+	DisplayTray    = "tray"    // one notification-area icon per device
+)
 
 // Thresholds offered in the menu.
 var Thresholds = []int{5, 10, 15, 20, 25, 30}
 
 // Defaults returns the settings used before the user changes anything.
-func Defaults() Settings { return Settings{LowThreshold: 15, Notify: true} }
+func Defaults() Settings { return Settings{LowThreshold: 15, Notify: true, Display: DisplayTaskbar} }
 
 // dir is a variable so tests can redirect it.
 var dir = func() string {
@@ -50,6 +57,9 @@ func Load() Settings {
 	}
 	if s.LowThreshold < 1 || s.LowThreshold > 99 {
 		s.LowThreshold = Defaults().LowThreshold
+	}
+	if s.Display != DisplayTaskbar && s.Display != DisplayTray {
+		s.Display = DisplayTaskbar
 	}
 	return s
 }

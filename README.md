@@ -32,9 +32,11 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 | `xinput` | Xbox kumandaları ve onlara takılı kulaklıklar (kaba seviye: Empty / Low / Medium / Full) | Microsoft XInput API |
 | `bluetooth` | Windows'un pil seviyesini bildiği her Bluetooth cihaz (BLE fare/klavye, eller serbest kulaklıklar...) | Windows cihaz özelliği `DEVPKEY_Bluetooth_Battery` |
 
-## Tepsi ikonları
+## Görünüm
 
-Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/siyah), %15 ve altı kırmızı, şarj olurken yeşil, uyurken gri. Kaba seviye bildiren cihazlarda baş harf (E/L/M/F). İkonlar GDI ile çizilir; tema ve DPI değişince yeniden çizilir. Önizleme: `go run ./tools/iconpreview out.png`.
+**Görev çubuğunda (varsayılan):** bildirim alanının hemen solunda `🎧 40%  🖱 85%` biçiminde, Windows'un kendi ikon fontuyla (Segoe Fluent Icons / MDL2). Şarj olurken yeşil şimşek, düşük pilde kırmızı, uyuyan cihaz gri. Görev çubuğuna gömülü şeffaf bir pencere (`UpdateLayeredWindow`) kullanılır; tıklayınca menü açılır. Görev çubuğu dikeyse otomatik olarak tepsi ikonlarına geçer.
+
+**Tepsi ikonları:** Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/siyah), %15 ve altı kırmızı, şarj olurken yeşil, uyurken gri. Kaba seviye bildiren cihazlarda baş harf (E/L/M/F). İkonlar GDI ile çizilir; tema ve DPI değişince yeniden çizilir. Önizleme: `go run ./tools/iconpreview out.png`.
 
 Seviyeler 60 saniyede bir okunur; bir HID cihaz takılınca/çıkarılınca (2 sn sonra) ve bilgisayar uykudan uyanınca (8 sn sonra) hemen yenilenir. Sağ tık menüsündeki **Start with Windows** yönetici izni gerektirmeden `HKCU\...\Run` kaydını açar/kapatır.
 
@@ -102,7 +104,6 @@ protokolleri kendi USB yakalamalarımız ve analizlerimizle çıkarılır. Kural
 
 ## Yol haritası
 
-1. **Görev çubuğu metni** (`🎧 40%  🖱 85%`).
 2. **Manifest + ikon** (`go-winres`): DPI farkındalığı, Common Controls v6.
 3. **Sürücüler** (önce elimizdeki donanım):
    - Windows'un zaten bildiği Bluetooth pil seviyeleri (`DEVPKEY_Bluetooth_DeviceBattery`)

@@ -151,6 +151,9 @@ type Tray struct {
 	nextID  uint32
 	appIcon *notifyIconData // nil while device icons are shown
 	notes   []note          // notifications waiting for the UI thread
+	wantBar []BarItem       // taskbar text requested by SetTaskbar
+	barSet  bool
+	bar     bar
 }
 
 type shownIcon struct {
@@ -184,6 +187,7 @@ func Run(cfg Config) error {
 	t.taskbarMsg = uint32(r)
 
 	registerHIDNotifications(hwnd)
+	procSetTimer.Call(hwnd, barTimerID, barTimerInterval, 0) // follows taskbar / tray width changes
 	t.apply()
 	defer t.removeAll()
 	if cfg.Ready != nil {
@@ -301,9 +305,39 @@ func (t *Tray) redrawAll(readd bool) {
 	if readd && t.appIcon != nil {
 		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(t.appIcon)))
 	}
+	if readd {
+		t.bar.hwnd = 0 // the old taskbar took our child window down with it
+	}
+	t.bar.lastTB = rect{} // force a redraw (theme / DPI may have changed)
+	t.applyBar()
+}
+
+// repositionBar redraws the taskbar text only when the taskbar or the notification area
+// moved or resized (cheap check every couple of seconds).
+func (t *Tray) repositionBar() {
+	t.mu.Lock()
+	want := len(t.wantBar) > 0
+	t.mu.Unlock()
+	if !want {
+		return
+	}
+	tb, notify, ok := taskbarGeometry()
+	if !ok {
+		t.bar.destroy()
+		return
+	}
+	alive := false
+	if t.bar.hwnd != 0 {
+		r, _, _ := procIsWindow.Call(t.bar.hwnd)
+		alive = r != 0
+	}
+	if !alive || tb != t.bar.lastTB || notify != t.bar.lastNotify {
+		t.applyBar() // first draw, Explorer restart, taskbar resized or tray icons added/removed
+	}
 }
 
 func (t *Tray) removeAll() {
+	t.bar.destroy()
 	for _, s := range t.shown {
 		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&s.nid)))
 		procDestroyIcon.Call(s.nid.Icon)
@@ -436,7 +470,11 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 		return 1
 	case m == wmApply:
 		t.apply()
+		t.applyBar()
 		t.flushNotes()
+		return 0
+	case m == wmTimer && w == barTimerID:
+		t.repositionBar()
 		return 0
 	case m == wmSettingChange, m == wmDpiChanged:
 		t.redrawAll(false) // light/dark switch or scaling change

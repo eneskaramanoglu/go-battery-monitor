@@ -96,10 +96,10 @@ func (a *app) render() {
 	a.mu.Lock()
 	st, err, cfg := a.last, a.lastErr, a.cfg
 	a.mu.Unlock()
-	icons := make([]tray.Icon, 0, len(st))
+	var visible []device.Status
 	for _, s := range st {
 		if !cfg.IsHidden(s.Key) {
-			icons = append(icons, iconFor(s, cfg.LowThreshold))
+			visible = append(visible, s)
 		}
 	}
 	tip := "Battery monitor"
@@ -108,10 +108,31 @@ func (a *app) render() {
 		tip += ": " + err.Error()
 	case len(st) == 0:
 		tip += ": no supported device"
-	case len(icons) == 0:
+	case len(visible) == 0:
 		tip += ": all devices hidden"
 	}
+
+	// Taskbar mode: text on the taskbar, a single app icon in the tray for the menu.
+	// Falls back to per-device tray icons when the taskbar is vertical or missing.
+	if cfg.Display == settings.DisplayTaskbar && tray.TaskbarAvailable() {
+		items := make([]tray.BarItem, 0, len(visible))
+		for _, s := range visible {
+			items = append(items, barItemFor(s, cfg.LowThreshold))
+		}
+		if len(visible) > 0 {
+			tip = summary(visible)
+		}
+		a.t.SetTooltip(tip)
+		a.t.SetIcons(nil)
+		a.t.SetTaskbar(items)
+		return
+	}
+	icons := make([]tray.Icon, 0, len(visible))
+	for _, s := range visible {
+		icons = append(icons, iconFor(s, cfg.LowThreshold))
+	}
 	a.t.SetTooltip(tip)
+	a.t.SetTaskbar(nil)
 	a.t.SetIcons(icons)
 }
 
@@ -156,6 +177,14 @@ func (a *app) menu() []tray.MenuItem {
 		{Title: "Battery monitor " + version.String(), Disabled: true},
 		{},
 		{Title: "Devices", Children: devices},
+		{Title: "Display", Children: []tray.MenuItem{
+			{Title: "On the taskbar", Checked: cfg.Display == settings.DisplayTaskbar, OnClick: func() {
+				a.update(func(c *settings.Settings) { c.Display = settings.DisplayTaskbar })
+			}},
+			{Title: "Tray icons", Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
+				a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
+			}},
+		}},
 		{Title: "Low battery level", Children: thresholds},
 		{Title: "Low battery notifications", Checked: cfg.Notify, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Notify = !c.Notify })
