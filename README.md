@@ -34,7 +34,7 @@ batterymon.exe --dump    # tüm HID koleksiyonlarını yazar (yeni cihaz eklemek
 
 ## Derleme
 
-Go 1.21 veya üstü (önerilen: en güncel kararlı sürüm, <https://go.dev/dl>).
+Go 1.27 veya üstü (<https://go.dev/dl>, ya da `winget install GoLang.Go`).
 
 ```
 powershell -File build.ps1
