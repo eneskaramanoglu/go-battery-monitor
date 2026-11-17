@@ -22,6 +22,7 @@ import (
 	_ "github.com/eneskaramanoglu/go-battery-monitor/internal/drivers" // registers every driver
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/tray"
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/version"
 )
 
 const pollInterval = 60 * time.Second
@@ -29,8 +30,14 @@ const pollInterval = 60 * time.Second
 func main() {
 	list := flag.Bool("list", false, "print devices and battery levels, then exit")
 	dump := flag.Bool("dump", false, "print every HID collection, then exit")
+	ver := flag.Bool("version", false, "print the version, then exit")
 	flag.Parse()
 
+	if *ver {
+		attachConsole()
+		fmt.Println("batterymon", version.String())
+		return
+	}
 	if *list || *dump {
 		attachConsole()
 		var err error
