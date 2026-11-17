@@ -1,0 +1,185 @@
+// batterymon shows the battery level of wireless mice, keyboards, headsets and controllers
+// in the Windows notification area.
+//
+//	batterymon          run in the tray
+//	batterymon --list   print every device found and its battery level, then exit
+//	batterymon --dump   print every HID collection (for reverse engineering new devices)
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/sys/windows"
+
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
+	_ "github.com/eneskaramanoglu/go-battery-monitor/internal/drivers" // registers every driver
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/tray"
+)
+
+const pollInterval = 60 * time.Second
+
+func main() {
+	list := flag.Bool("list", false, "print devices and battery levels, then exit")
+	dump := flag.Bool("dump", false, "print every HID collection, then exit")
+	flag.Parse()
+
+	if *list || *dump {
+		attachConsole()
+		var err error
+		if *dump {
+			err = runDump()
+		} else {
+			err = runList()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// A tray app idles almost all the time: return memory to Windows eagerly.
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(16 << 20)
+
+	if !singleInstance() {
+		return
+	}
+	runTray()
+}
+
+func runList() error {
+	st, err := device.PollAll()
+	if err != nil {
+		return err
+	}
+	if len(st) == 0 {
+		fmt.Printf("No supported device found (%d drivers registered). Use --dump to see HID collections.\n", len(device.Drivers()))
+		return nil
+	}
+	for _, s := range st {
+		fmt.Println(s)
+	}
+	return nil
+}
+
+func runDump() error {
+	cols, err := hid.Enumerate()
+	if err != nil {
+		return err
+	}
+	sort.SliceStable(cols, func(i, j int) bool {
+		a, b := cols[i], cols[j]
+		if a.VendorID != b.VendorID {
+			return a.VendorID < b.VendorID
+		}
+		if a.ProductID != b.ProductID {
+			return a.ProductID < b.ProductID
+		}
+		return a.Interface < b.Interface
+	})
+	fmt.Println("VID:PID    MI  PAGE:USAGE  IN  OUT FEAT  PRODUCT")
+	for _, c := range cols {
+		fmt.Printf("%04X:%04X %3d  %04X:%04X %4d %4d %4d  %s\n", c.VendorID, c.ProductID, c.Interface,
+			c.UsagePage, c.Usage, c.InputLen, c.OutputLen, c.FeatureLen, c.Product)
+	}
+	return nil
+}
+
+func runTray() {
+	var (
+		mu      sync.Mutex
+		polling bool
+		t       *tray.Tray
+	)
+	refresh := func() {
+		mu.Lock()
+		if polling {
+			mu.Unlock()
+			return
+		}
+		polling = true
+		mu.Unlock()
+		go func() {
+			defer func() { mu.Lock(); polling = false; mu.Unlock() }()
+			st, err := device.PollAll()
+			if t != nil {
+				t.SetTooltip(tooltip(st, err))
+			}
+		}()
+	}
+	menu := []tray.MenuItem{
+		{Title: "Refresh now", OnClick: refresh},
+		{},
+		{Title: "Exit", OnClick: func() { t.Quit() }},
+	}
+	err := tray.Run("Battery monitor: reading devices...", menu, refresh, func(tr *tray.Tray) {
+		t = tr
+		refresh()
+		go func() {
+			for range time.Tick(pollInterval) {
+				refresh()
+			}
+		}()
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tray:", err)
+		os.Exit(1)
+	}
+}
+
+func tooltip(st []device.Status, err error) string {
+	if err != nil {
+		return "Battery monitor: " + err.Error()
+	}
+	if len(st) == 0 {
+		return "Battery monitor: no supported device"
+	}
+	var b strings.Builder
+	for i, s := range st {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		lvl := "?"
+		if s.Percent >= 0 {
+			lvl = fmt.Sprintf("%d%%", s.Percent)
+		}
+		if s.Charging {
+			lvl += " ⚡"
+		}
+		fmt.Fprintf(&b, "%s: %s", s.Name, lvl)
+	}
+	return b.String()
+}
+
+// singleInstance returns false when another copy is already running.
+func singleInstance() bool {
+	name, _ := windows.UTF16PtrFromString(`Local\go-battery-monitor`)
+	_, err := windows.CreateMutex(nil, false, name)
+	return err != windows.ERROR_ALREADY_EXISTS
+}
+
+// attachConsole makes --list / --dump print into the terminal they were started from, since
+// the exe is built as a GUI program (-H windowsgui) and has no console of its own.
+func attachConsole() {
+	if _, err := os.Stdout.Stat(); err == nil {
+		return // output is redirected to a file or pipe already
+	}
+	const attachParentProcess = ^uint32(0)
+	proc := windows.NewLazySystemDLL("kernel32.dll").NewProc("AttachConsole")
+	if r, _, _ := proc.Call(uintptr(attachParentProcess)); r == 0 {
+		return
+	}
+	if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+		os.Stdout, os.Stderr = f, f
+		fmt.Println()
+	}
+}

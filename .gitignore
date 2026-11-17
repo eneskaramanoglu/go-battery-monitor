@@ -1,0 +1,6 @@
+bin/
+*.exe
+*.pcap
+*.pcapng
+dump*.txt
+.claude/
