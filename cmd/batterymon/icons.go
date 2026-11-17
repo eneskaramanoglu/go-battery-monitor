@@ -62,7 +62,7 @@ func barItemFor(s device.Status, threshold int) tray.BarItem {
 	if style == tray.Charging {
 		style = tray.Normal // the charging bolt carries the colour, the number stays readable
 	}
-	return tray.BarItem{Glyph: glyph, Text: text, Style: style, Charging: s.Charging}
+	return tray.BarItem{Key: s.Key, Glyph: glyph, Text: text, Style: style, Charging: s.Charging}
 }
 
 // summary is the app icon tooltip in taskbar mode: one line per device.

@@ -6,8 +6,12 @@ package tray
 // (including transparent / acrylic styles) shows through.
 
 import (
+	"fmt"
 	"image"
+	"os"
+	"path/filepath"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -54,18 +58,46 @@ const (
 	glyphCharging = ''
 )
 
-// BarItem is one device on the taskbar: a glyph and its level text.
+// BarItem is one device on the taskbar: a glyph and its level text. Key identifies the
+// device in menu callbacks (right-clicking an item passes its key to Config.Menu).
 type BarItem struct {
+	Key      string
 	Glyph    rune
 	Text     string
 	Style    Style
 	Charging bool
 }
 
+// span is the horizontal extent of one item in the taskbar window (client pixels).
+type span struct{ x0, x1 int }
+
 type bar struct {
 	hwnd               uintptr
 	items              []BarItem
+	spans              []span
 	lastTB, lastNotify rect // geometry used for the last draw
+	pointerButton      int  // button pressed in the current pointer gesture: 1 left, 2 right
+}
+
+// keyAt returns the key of the item under client x (the nearest item when between two).
+func (b *bar) keyAt(x int) string {
+	best, bestDist := -1, 1<<30
+	for i, s := range b.spans {
+		d := 0
+		switch {
+		case x < s.x0:
+			d = s.x0 - x
+		case x > s.x1:
+			d = x - s.x1
+		}
+		if d < bestDist {
+			best, bestDist = i, d
+		}
+	}
+	if best < 0 || best >= len(b.items) {
+		return ""
+	}
+	return b.items[best].Key
 }
 
 // SetTaskbar shows items as text on the taskbar; nil removes it. It reports nothing when the
@@ -184,7 +216,7 @@ func (b *bar) draw(tb, notify rect) {
 	if dpi == 0 {
 		dpi = 96
 	}
-	px, width := renderBar(b.items, height, int(dpi), taskbarIsLight())
+	px, width, spans := renderBar(b.items, height, int(dpi), taskbarIsLight())
 	if px == nil || width == 0 {
 		return
 	}
@@ -196,7 +228,7 @@ func (b *bar) draw(tb, notify rect) {
 	// HWND_TOP (0): on Windows 11 the taskbar content is a XAML layer
 	// (DesktopWindowContentBridge) that covers the whole taskbar; we must sit above it.
 	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), 0, uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
-	b.lastTB, b.lastNotify = tb, notify
+	b.lastTB, b.lastNotify, b.spans = tb, notify, spans
 
 	screen, _, _ := procGetDC.Call(0)
 	defer procReleaseDC.Call(0, screen)
@@ -221,19 +253,62 @@ func (b *bar) draw(tb, notify rect) {
 		uintptr(unsafe.Pointer(&src)), 0, uintptr(unsafe.Pointer(&blend)), ulwAlpha)
 }
 
+const (
+	wmContextMenu     = 0x007B
+	wmPointerDown     = 0x0246
+	wmPointerUp       = 0x0247
+	wmPointerActivate = 0x024B
+	paNoActivate      = 3
+	pointerFirstBtn   = 0x10 // POINTER_MESSAGE_FLAG_FIRSTBUTTON (high word of wParam)
+	pointerSecondBtn  = 0x20 // POINTER_MESSAGE_FLAG_SECONDBUTTON
+)
+
+var procScreenToClient = user32.NewProc("ScreenToClient")
+
+// barProc handles input on the taskbar text. Our window shares Explorer's input queue, and
+// the Windows 11 taskbar runs that queue in pointer mode, so clicks arrive as WM_POINTER*
+// messages rather than WM_xBUTTONUP; both are handled.
 func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	t := current
+	debugLog(m, w, l)
 	switch m {
 	case wmMouseActivate:
 		return maNoActivate // never steal focus from the taskbar
+	case wmPointerActivate:
+		return paNoActivate
+	case wmPointerDown:
+		if t != nil {
+			flags := uint32(w >> 16)
+			switch {
+			case flags&pointerSecondBtn != 0:
+				t.bar.pointerButton = 2
+			case flags&pointerFirstBtn != 0:
+				t.bar.pointerButton = 1
+			}
+		}
+		return 0
+	case wmPointerUp:
+		if t != nil {
+			btn := t.bar.pointerButton
+			t.bar.pointerButton = 0
+			pt := struct{ X, Y int32 }{int32(int16(l)), int32(int16(l >> 16))} // screen coords
+			procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+			t.barClick(btn, int(pt.X))
+		}
+		return 0
 	case wmLButtonUp:
 		if t != nil {
-			call(t.cfg.OnLeftClick)
+			t.barClick(1, int(int16(l)))
 		}
 		return 0
 	case wmRButtonUp:
 		if t != nil {
-			t.showMenu()
+			t.barClick(2, int(int16(l)))
+		}
+		return 0
+	case wmContextMenu:
+		if t != nil {
+			t.showMenuFor("")
 		}
 		return 0
 	}
@@ -241,13 +316,38 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	return r
 }
 
+func (t *Tray) barClick(button, x int) {
+	switch button {
+	case 1:
+		call(t.cfg.OnLeftClick)
+	case 2:
+		t.showMenuFor(t.bar.keyAt(x))
+	}
+}
+
+// debugLog appends input messages to %TEMP%\batterymon-debug.log when the environment
+// variable BATTERYMON_DEBUG is set (to diagnose taskbar input on new Windows builds).
+func debugLog(m uint32, w, l uintptr) {
+	if !debugEnabled {
+		return
+	}
+	if (m >= 0x0200 && m <= 0x020E) || (m >= 0x0240 && m <= 0x0251) || m == wmContextMenu || m == wmMouseActivate {
+		if f, err := os.OpenFile(filepath.Join(os.TempDir(), "batterymon-debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			fmt.Fprintf(f, "%s msg=%#04x w=%#x l=%#x\n", time.Now().Format("15:04:05.000"), m, w, l)
+			f.Close()
+		}
+	}
+}
+
+var debugEnabled = os.Getenv("BATTERYMON_DEBUG") != ""
+
 // renderBar draws the items into premultiplied BGRA pixels of the given height and returns
 // them with the width used. Text is white-on-black first; brightness becomes alpha, and each
 // item gets its own colour. The background keeps alpha 1 so the whole strip is clickable.
-func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int) {
+func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []span) {
 	hdc, _, _ := procCreateCompatibleDC.Call(0)
 	if hdc == 0 {
-		return nil, 0
+		return nil, 0, nil
 	}
 	defer procDeleteDC.Call(hdc)
 
@@ -270,8 +370,10 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int) {
 	gap := textPx / 4
 	itemGap := textPx
 	var parts []part
+	spans := make([]span, len(items))
 	x := gap
 	for i, it := range items {
+		spans[i].x0 = x
 		add := func(s string, f uintptr, after int) {
 			u, _ := windows.UTF16FromString(s)
 			w := textWidth(hdc, f, u)
@@ -290,13 +392,16 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int) {
 		}
 	}
 	width := x + gap
+	for _, p := range parts {
+		spans[p.item].x1 = max(spans[p.item].x1, p.x+p.w)
+	}
 
 	bi := bitmapInfoHeader{Width: int32(width), Height: -int32(height), Planes: 1, BitCount: 32}
 	bi.Size = uint32(unsafe.Sizeof(bi))
 	var bits unsafe.Pointer
 	bmp, _, _ := procCreateDIBSection.Call(hdc, uintptr(unsafe.Pointer(&bi)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
 	if bmp == 0 {
-		return nil, 0
+		return nil, 0, nil
 	}
 	defer procDeleteObject.Call(bmp)
 	old, _, _ := procSelectObject.Call(hdc, bmp)
@@ -337,12 +442,12 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int) {
 		}
 		out[i*4], out[i*4+1], out[i*4+2], out[i*4+3] = mul(c.B, a), mul(c.G, a), mul(c.R, a), a
 	}
-	return out, width
+	return out, width, spans
 }
 
 // PreviewBar renders taskbar text as an image (tests and tools/iconpreview).
 func PreviewBar(items []BarItem, height int, light bool) *image.NRGBA {
-	px, w := renderBar(items, height, 96, light)
+	px, w, _ := renderBar(items, height, 96, light)
 	img := image.NewNRGBA(image.Rect(0, 0, w, height))
 	for i := 0; i+3 < len(px); i += 4 {
 		a := px[i+3]

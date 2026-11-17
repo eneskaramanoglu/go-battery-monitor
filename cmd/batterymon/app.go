@@ -146,10 +146,25 @@ func (a *app) update(change func(*settings.Settings)) {
 	a.render()
 }
 
-func (a *app) menu() []tray.MenuItem {
+func (a *app) menu(target string) []tray.MenuItem {
 	a.mu.Lock()
 	st, cfg := a.last, a.cfg
 	a.mu.Unlock()
+
+	// Right-clicked on a device: offer to hide it first. It comes back from Devices.
+	var head []tray.MenuItem
+	for _, s := range st {
+		if s.Key == target && target != "" {
+			key := s.Key
+			head = []tray.MenuItem{
+				{Title: s.Name + "  " + s.LevelText(), Disabled: true},
+				{Title: "Hide this device", OnClick: func() {
+					a.update(func(c *settings.Settings) { c.SetHidden(key, true) })
+				}},
+				{},
+			}
+		}
+	}
 
 	var devices []tray.MenuItem
 	for _, s := range st {
@@ -173,7 +188,7 @@ func (a *app) menu() []tray.MenuItem {
 		})
 	}
 
-	return []tray.MenuItem{
+	return append(head, []tray.MenuItem{
 		{Title: "Battery monitor " + version.String(), Disabled: true},
 		{},
 		// How the levels are shown: directly in the menu so it is one right click away.
@@ -195,5 +210,5 @@ func (a *app) menu() []tray.MenuItem {
 		{},
 		{Title: "Refresh now", OnClick: a.refresh},
 		{Title: "Exit", OnClick: func() { a.t.Quit() }},
-	}
+	}...)
 }

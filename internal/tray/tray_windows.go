@@ -130,12 +130,12 @@ type MenuItem struct {
 // Config describes the tray. Callbacks run on the UI thread: keep them short (start a
 // goroutine for anything slow).
 type Config struct {
-	Tooltip        string            // app icon tooltip until SetTooltip is called
-	Menu           func() []MenuItem // builds the right-click menu each time it opens
-	OnLeftClick    func()            // left click on any icon
-	OnDeviceChange func()            // a HID device arrived or was removed
-	OnResume       func()            // the PC woke up from sleep or hibernation
-	Ready          func(*Tray)       // called once the tray exists, before the message loop
+	Tooltip        string                         // app icon tooltip until SetTooltip is called
+	Menu           func(target string) []MenuItem // builds the right-click menu; target is the key of the device clicked, or ""
+	OnLeftClick    func()                         // left click on any icon
+	OnDeviceChange func()                         // a HID device arrived or was removed
+	OnResume       func()                         // the PC woke up from sleep or hibernation
+	Ready          func(*Tray)                    // called once the tray exists, before the message loop
 }
 
 // Tray is the running UI. SetIcons, SetTooltip and Quit are safe from any goroutine.
@@ -349,6 +349,16 @@ func (t *Tray) removeAll() {
 	}
 }
 
+// keyForIconID maps a tray icon id (wParam of the callback) back to its device key.
+func (t *Tray) keyForIconID(id uint32) string {
+	for k, s := range t.shown {
+		if s.nid.ID == id {
+			return k
+		}
+	}
+	return ""
+}
+
 func setTip(n *notifyIconData, s string) {
 	u := windows.StringToUTF16(s)
 	if len(u) > len(n.Tip) {
@@ -358,12 +368,13 @@ func setTip(n *notifyIconData, s string) {
 	copy(n.Tip[:], u)
 }
 
-func (t *Tray) showMenu() {
+// showMenuFor opens the right-click menu; target is the key of the device under the cursor.
+func (t *Tray) showMenuFor(target string) {
 	if t.cfg.Menu == nil {
 		return
 	}
 	var actions []func() // command id i+1 runs actions[i]
-	m := buildMenu(t.cfg.Menu(), &actions)
+	m := buildMenu(t.cfg.Menu(target), &actions)
 	var pt struct{ X, Y int32 }
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	procSetForegroundWindow.Call(t.hwnd) // otherwise the menu does not close when clicking away
@@ -455,7 +466,7 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	case m == wmTrayCB:
 		switch uint32(l) {
 		case wmRButtonUp:
-			t.showMenu()
+			t.showMenuFor(t.keyForIconID(uint32(w)))
 		case wmLButtonUp:
 			call(t.cfg.OnLeftClick)
 		}
