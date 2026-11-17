@@ -265,9 +265,9 @@ const (
 
 var procScreenToClient = user32.NewProc("ScreenToClient")
 
-// barProc handles input on the taskbar text. Our window shares Explorer's input queue, and
-// the Windows 11 taskbar runs that queue in pointer mode, so clicks arrive as WM_POINTER*
-// messages rather than WM_xBUTTONUP; both are handled.
+// barProc handles input on the taskbar text. On Windows 11 25H2 clicks arrive as ordinary
+// WM_xBUTTONDOWN/UP (seen in the debug log). Our window shares Explorer's input queue, so
+// WM_POINTER* messages are handled as well in case a build runs that queue in pointer mode.
 func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	t := current
 	debugLog(m, w, l)
