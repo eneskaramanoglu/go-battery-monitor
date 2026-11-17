@@ -22,7 +22,7 @@ func TestIconFor(t *testing.T) {
 		{device.Status{Key: "f", Name: "Pad", Percent: -1}, "?", tray.Normal},
 	}
 	for _, c := range cases {
-		ic := iconFor(c.s)
+		ic := iconFor(c.s, 15)
 		if ic.Text != c.text || ic.Style != c.style || ic.Key != c.s.Key {
 			t.Errorf("iconFor(%+v) = %+v, want text %q style %v", c.s, ic, c.text, c.style)
 		}

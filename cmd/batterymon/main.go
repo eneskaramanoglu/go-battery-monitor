@@ -12,16 +12,13 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
-	"sync"
 	"time"
 
 	"golang.org/x/sys/windows"
 
-	"github.com/eneskaramanoglu/go-battery-monitor/internal/autostart"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
 	_ "github.com/eneskaramanoglu/go-battery-monitor/internal/drivers" // registers every driver
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
-	"github.com/eneskaramanoglu/go-battery-monitor/internal/tray"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/version"
 )
 
@@ -115,87 +112,6 @@ func runDump() error {
 			c.UsagePage, c.Usage, c.InputLen, c.OutputLen, c.FeatureLen, c.Product)
 	}
 	return nil
-}
-
-func runTray() {
-	var (
-		mu      sync.Mutex
-		polling bool
-		t       *tray.Tray
-	)
-	refresh := func() {
-		mu.Lock()
-		if polling {
-			mu.Unlock()
-			return
-		}
-		polling = true
-		mu.Unlock()
-		go func() {
-			defer func() { mu.Lock(); polling = false; mu.Unlock() }()
-			st, err := poll()
-			icons := make([]tray.Icon, 0, len(st))
-			for _, s := range st {
-				icons = append(icons, iconFor(s))
-			}
-			t.SetTooltip(tooltip(st, err))
-			t.SetIcons(icons)
-		}()
-	}
-	// refreshSoon coalesces bursts of events (a dongle exposes several HID interfaces, each
-	// raising its own arrival) into a single poll once things settle.
-	var timer *time.Timer
-	refreshSoon := func(delay time.Duration) {
-		mu.Lock()
-		defer mu.Unlock()
-		if timer != nil {
-			timer.Stop()
-		}
-		timer = time.AfterFunc(delay, refresh)
-	}
-	menu := func() []tray.MenuItem {
-		return []tray.MenuItem{
-			{Title: "Battery monitor " + version.String(), Disabled: true},
-			{},
-			{Title: "Refresh now", OnClick: refresh},
-			{Title: "Start with Windows", Checked: autostart.Enabled, OnClick: func() {
-				autostart.Set(!autostart.Enabled())
-			}},
-			{},
-			{Title: "Exit", OnClick: func() { t.Quit() }},
-		}
-	}
-	err := tray.Run(tray.Config{
-		Tooltip:        "Battery monitor: reading devices...",
-		Menu:           menu,
-		OnLeftClick:    refresh,
-		OnDeviceChange: func() { refreshSoon(2 * time.Second) },
-		// Wireless devices take a few seconds to reconnect after the PC wakes up.
-		OnResume: func() { refreshSoon(8 * time.Second) },
-		Ready: func(tr *tray.Tray) {
-			t = tr
-			refresh()
-			go func() {
-				for range time.Tick(pollInterval) {
-					refresh()
-				}
-			}()
-		},
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "tray:", err)
-		os.Exit(1)
-	}
-}
-
-func tooltip(st []device.Status, err error) string {
-	if err != nil {
-		return "Battery monitor: " + err.Error()
-	}
-	if len(st) == 0 {
-		return "Battery monitor: no supported device"
-	}
-	return "Battery monitor"
 }
 
 // singleInstance returns false when another copy is already running.

@@ -56,6 +56,9 @@ const (
 	mfGrayed        = 0x1
 	mfChecked       = 0x8
 	mfSeparator     = 0x800
+	mfPopup         = 0x10
+	nifInfo         = 0x10
+	niifWarning     = 0x2
 	tpmReturnCmd    = 0x100
 	tpmRightAlign   = 0x8
 	idiApp          = 32512
@@ -114,13 +117,14 @@ type Icon struct {
 	Style   Style
 }
 
-// MenuItem is one entry of the right-click menu; an empty Title draws a separator.
-// Checked and Disabled are read each time the menu opens.
+// MenuItem is one entry of the right-click menu; an empty Title draws a separator and
+// Children turn the item into a submenu.
 type MenuItem struct {
 	Title    string
 	OnClick  func()
-	Checked  func() bool
+	Checked  bool
 	Disabled bool
+	Children []MenuItem
 }
 
 // Config describes the tray. Callbacks run on the UI thread: keep them short (start a
@@ -146,6 +150,7 @@ type Tray struct {
 	shown   map[string]*shownIcon
 	nextID  uint32
 	appIcon *notifyIconData // nil while device icons are shown
+	notes   []note          // notifications waiting for the UI thread
 }
 
 type shownIcon struct {
@@ -321,31 +326,91 @@ func (t *Tray) showMenu() {
 	if t.cfg.Menu == nil {
 		return
 	}
-	items := t.cfg.Menu()
+	var actions []func() // command id i+1 runs actions[i]
+	m := buildMenu(t.cfg.Menu(), &actions)
+	var pt struct{ X, Y int32 }
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	procSetForegroundWindow.Call(t.hwnd) // otherwise the menu does not close when clicking away
+	cmd, _, _ := procTrackPopupMenu.Call(m, tpmReturnCmd|tpmRightAlign, uintptr(pt.X), uintptr(pt.Y), 0, t.hwnd, 0)
+	procDestroyMenu.Call(m) // also destroys the submenus
+	if cmd > 0 && int(cmd) <= len(actions) && actions[cmd-1] != nil {
+		actions[cmd-1]()
+	}
+}
+
+func buildMenu(items []MenuItem, actions *[]func()) uintptr {
 	m, _, _ := procCreatePopupMenu.Call()
-	for i, it := range items {
+	for _, it := range items {
 		if it.Title == "" {
 			procAppendMenu.Call(m, mfSeparator, 0, 0)
 			continue
 		}
 		flags := uintptr(mfString)
-		if it.Checked != nil && it.Checked() {
+		if it.Checked {
 			flags |= mfChecked
 		}
 		if it.Disabled {
 			flags |= mfGrayed
 		}
 		s, _ := windows.UTF16PtrFromString(it.Title)
-		procAppendMenu.Call(m, flags, uintptr(i+1), uintptr(unsafe.Pointer(s)))
+		if len(it.Children) > 0 {
+			sub := buildMenu(it.Children, actions)
+			procAppendMenu.Call(m, flags|mfPopup, sub, uintptr(unsafe.Pointer(s)))
+			continue
+		}
+		*actions = append(*actions, it.OnClick)
+		procAppendMenu.Call(m, flags, uintptr(len(*actions)), uintptr(unsafe.Pointer(s)))
 	}
-	var pt struct{ X, Y int32 }
-	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-	procSetForegroundWindow.Call(t.hwnd) // otherwise the menu does not close when clicking away
-	cmd, _, _ := procTrackPopupMenu.Call(m, tpmReturnCmd|tpmRightAlign, uintptr(pt.X), uintptr(pt.Y), 0, t.hwnd, 0)
-	procDestroyMenu.Call(m)
-	if cmd > 0 && int(cmd) <= len(items) && items[cmd-1].OnClick != nil {
-		items[cmd-1].OnClick()
+	return m
+}
+
+// Notify shows a Windows notification attached to a device icon (or the app icon).
+func (t *Tray) Notify(key, title, text string) {
+	t.mu.Lock()
+	t.notes = append(t.notes, note{key, title, text})
+	t.mu.Unlock()
+	procPostMessage.Call(t.hwnd, wmApply, 0, 0)
+}
+
+type note struct{ key, title, text string }
+
+// flushNotes shows pending notifications. UI thread only.
+func (t *Tray) flushNotes() {
+	t.mu.Lock()
+	notes := t.notes
+	t.notes = nil
+	t.mu.Unlock()
+	for _, n := range notes {
+		var nid *notifyIconData
+		if s := t.shown[n.key]; s != nil {
+			nid = &s.nid
+		} else if t.appIcon != nil {
+			nid = t.appIcon
+		} else {
+			for _, s := range t.shown {
+				nid = &s.nid
+				break
+			}
+		}
+		if nid == nil {
+			continue
+		}
+		info := *nid
+		info.Flags = nifInfo
+		copyUTF16(info.InfoTitle[:], n.title)
+		copyUTF16(info.Info[:], n.text)
+		info.InfoFlags = niifWarning
+		procShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&info)))
 	}
+}
+
+func copyUTF16(dst []uint16, s string) {
+	u := windows.StringToUTF16(s)
+	if len(u) > len(dst) {
+		u = append(u[:len(dst)-1], 0)
+	}
+	clear(dst)
+	copy(dst, u)
 }
 
 func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
@@ -371,6 +436,7 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 		return 1
 	case m == wmApply:
 		t.apply()
+		t.flushNotes()
 		return 0
 	case m == wmSettingChange, m == wmDpiChanged:
 		t.redrawAll(false) // light/dark switch or scaling change

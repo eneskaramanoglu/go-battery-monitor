@@ -38,6 +38,10 @@ Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/
 
 Seviyeler 60 saniyede bir okunur; bir HID cihaz takılınca/çıkarılınca (2 sn sonra) ve bilgisayar uykudan uyanınca (8 sn sonra) hemen yenilenir. Sağ tık menüsündeki **Start with Windows** yönetici izni gerektirmeden `HKCU\...\Run` kaydını açar/kapatır.
 
+## Ayarlar ve bildirimler
+
+Sağ tık menüsü: **Devices** (cihaz ikonlarını gizle/göster), **Low battery level** (eşik: %5–30), **Low battery notifications**, **Start with Windows**. Bir cihaz eşiğe indiğinde bir kez Windows bildirimi gösterilir; şarja takılınca veya eşiğin 5 puan üstüne çıkınca yeniden kurulur. Ayarlar `%APPDATA%\go-battery-monitor\settings.json` dosyasında saklanır.
+
 ## Kullanım
 
 ```
@@ -106,5 +110,4 @@ protokolleri kendi USB yakalamalarımız ve analizlerimizle çıkarılır. Kural
    - ATK 8K fare alıcısı `373B:1278` (USB yakalamasıyla)
    - ATK N9 Pro kulaklık `373B:11CB` (sanal COM portu)
    - Xbox kumandaları (`Windows.Gaming.Input` / XInput)
-4. Düşük pil bildirimi ve ayarlar.
 5. Kurulum paketi ve GitHub Actions ile otomatik sürüm.

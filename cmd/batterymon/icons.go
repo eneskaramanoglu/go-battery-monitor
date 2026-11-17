@@ -8,11 +8,8 @@ import (
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/tray"
 )
 
-// lowPercent and below is drawn red and triggers the low battery notification.
-const lowPercent = 15
-
-// iconFor turns a device reading into its tray icon.
-func iconFor(s device.Status) tray.Icon {
+// iconFor turns a device reading into its tray icon; at or below threshold it is drawn red.
+func iconFor(s device.Status, threshold int) tray.Icon {
 	text := "?"
 	switch {
 	case s.Percent >= 0:
@@ -27,7 +24,7 @@ func iconFor(s device.Status) tray.Icon {
 		style = tray.Charging
 	case s.Asleep:
 		style = tray.Dim
-	case isLow(s):
+	case isLow(s, threshold):
 		style = tray.Low
 	}
 
@@ -48,9 +45,9 @@ func iconFor(s device.Status) tray.Icon {
 	return tray.Icon{Key: s.Key, Text: text, Tooltip: tip.String(), Style: style}
 }
 
-func isLow(s device.Status) bool {
+func isLow(s device.Status, threshold int) bool {
 	if s.Percent >= 0 {
-		return s.Percent <= lowPercent
+		return s.Percent <= threshold
 	}
 	return s.Level == "Empty" || s.Level == "Low"
 }
