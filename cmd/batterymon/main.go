@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/autostart"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
 	_ "github.com/eneskaramanoglu/go-battery-monitor/internal/drivers" // registers every driver
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
@@ -141,23 +142,45 @@ func runTray() {
 			t.SetIcons(icons)
 		}()
 	}
+	// refreshSoon coalesces bursts of events (a dongle exposes several HID interfaces, each
+	// raising its own arrival) into a single poll once things settle.
+	var timer *time.Timer
+	refreshSoon := func(delay time.Duration) {
+		mu.Lock()
+		defer mu.Unlock()
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(delay, refresh)
+	}
 	menu := func() []tray.MenuItem {
 		return []tray.MenuItem{
 			{Title: "Battery monitor " + version.String(), Disabled: true},
 			{},
 			{Title: "Refresh now", OnClick: refresh},
+			{Title: "Start with Windows", Checked: autostart.Enabled, OnClick: func() {
+				autostart.Set(!autostart.Enabled())
+			}},
 			{},
 			{Title: "Exit", OnClick: func() { t.Quit() }},
 		}
 	}
-	err := tray.Run("Battery monitor: reading devices...", menu, refresh, func(tr *tray.Tray) {
-		t = tr
-		refresh()
-		go func() {
-			for range time.Tick(pollInterval) {
-				refresh()
-			}
-		}()
+	err := tray.Run(tray.Config{
+		Tooltip:        "Battery monitor: reading devices...",
+		Menu:           menu,
+		OnLeftClick:    refresh,
+		OnDeviceChange: func() { refreshSoon(2 * time.Second) },
+		// Wireless devices take a few seconds to reconnect after the PC wakes up.
+		OnResume: func() { refreshSoon(8 * time.Second) },
+		Ready: func(tr *tray.Tray) {
+			t = tr
+			refresh()
+			go func() {
+				for range time.Tick(pollInterval) {
+					refresh()
+				}
+			}()
+		},
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "tray:", err)

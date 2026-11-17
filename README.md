@@ -36,6 +36,8 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 
 Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/siyah), %15 ve altı kırmızı, şarj olurken yeşil, uyurken gri. Kaba seviye bildiren cihazlarda baş harf (E/L/M/F). İkonlar GDI ile çizilir; tema ve DPI değişince yeniden çizilir. Önizleme: `go run ./tools/iconpreview out.png`.
 
+Seviyeler 60 saniyede bir okunur; bir HID cihaz takılınca/çıkarılınca (2 sn sonra) ve bilgisayar uykudan uyanınca (8 sn sonra) hemen yenilenir. Sağ tık menüsündeki **Start with Windows** yönetici izni gerektirmeden `HKCU\...\Run` kaydını açar/kapatır.
+
 ## Kullanım
 
 ```
@@ -104,6 +106,5 @@ protokolleri kendi USB yakalamalarımız ve analizlerimizle çıkarılır. Kural
    - ATK 8K fare alıcısı `373B:1278` (USB yakalamasıyla)
    - ATK N9 Pro kulaklık `373B:11CB` (sanal COM portu)
    - Xbox kumandaları (`Windows.Gaming.Input` / XInput)
-4. Cihaz takılınca/uyanınca yenileme (`WM_DEVICECHANGE`, `WM_POWERBROADCAST`), Windows ile başlat,
-   düşük pil bildirimi.
+4. Düşük pil bildirimi ve ayarlar.
 5. Kurulum paketi ve GitHub Actions ile otomatik sürüm.

@@ -123,12 +123,22 @@ type MenuItem struct {
 	Disabled bool
 }
 
+// Config describes the tray. Callbacks run on the UI thread: keep them short (start a
+// goroutine for anything slow).
+type Config struct {
+	Tooltip        string            // app icon tooltip until SetTooltip is called
+	Menu           func() []MenuItem // builds the right-click menu each time it opens
+	OnLeftClick    func()            // left click on any icon
+	OnDeviceChange func()            // a HID device arrived or was removed
+	OnResume       func()            // the PC woke up from sleep or hibernation
+	Ready          func(*Tray)       // called once the tray exists, before the message loop
+}
+
 // Tray is the running UI. SetIcons, SetTooltip and Quit are safe from any goroutine.
 type Tray struct {
 	hwnd       uintptr
 	taskbarMsg uint32
-	menu       func() []MenuItem
-	onLeft     func()
+	cfg        Config
 
 	mu      sync.Mutex
 	want    []Icon // latest requested icons, applied on the UI thread
@@ -146,10 +156,9 @@ type shownIcon struct {
 var current *Tray
 
 // Run creates the tray and runs the Win32 message loop on the calling goroutine until Quit.
-// menu builds the right-click menu each time it opens; ready is called once the tray exists.
-func Run(tip string, menu func() []MenuItem, onLeftClick func(), ready func(*Tray)) error {
+func Run(cfg Config) error {
 	runtime.LockOSThread()
-	t := &Tray{menu: menu, onLeft: onLeftClick, appTip: tip, shown: map[string]*shownIcon{}, nextID: 100}
+	t := &Tray{cfg: cfg, appTip: cfg.Tooltip, shown: map[string]*shownIcon{}, nextID: 100}
 	current = t
 
 	inst, _ := getModuleHandle()
@@ -169,10 +178,11 @@ func Run(tip string, menu func() []MenuItem, onLeftClick func(), ready func(*Tra
 	r, _, _ := procRegisterWindowMsg.Call(uintptr(unsafe.Pointer(tc)))
 	t.taskbarMsg = uint32(r)
 
+	registerHIDNotifications(hwnd)
 	t.apply()
 	defer t.removeAll()
-	if ready != nil {
-		ready(t)
+	if cfg.Ready != nil {
+		cfg.Ready(t)
 	}
 	var m msg
 	for {
@@ -308,7 +318,10 @@ func setTip(n *notifyIconData, s string) {
 }
 
 func (t *Tray) showMenu() {
-	items := t.menu()
+	if t.cfg.Menu == nil {
+		return
+	}
+	items := t.cfg.Menu()
 	m, _, _ := procCreatePopupMenu.Call()
 	for i, it := range items {
 		if it.Title == "" {
@@ -343,11 +356,19 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 		case wmRButtonUp:
 			t.showMenu()
 		case wmLButtonUp:
-			if t.onLeft != nil {
-				t.onLeft()
-			}
+			call(t.cfg.OnLeftClick)
 		}
 		return 0
+	case m == wmDeviceChange:
+		if w == dbtDeviceArrival || w == dbtDeviceRemoveComplete {
+			call(t.cfg.OnDeviceChange)
+		}
+		return 1
+	case m == wmPowerBroadcast:
+		if w == pbtAPMResumeAutomatic {
+			call(t.cfg.OnResume)
+		}
+		return 1
 	case m == wmApply:
 		t.apply()
 		return 0
