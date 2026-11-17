@@ -176,15 +176,15 @@ func (a *app) menu() []tray.MenuItem {
 	return []tray.MenuItem{
 		{Title: "Battery monitor " + version.String(), Disabled: true},
 		{},
-		{Title: "Devices", Children: devices},
-		{Title: "Display", Children: []tray.MenuItem{
-			{Title: "On the taskbar", Checked: cfg.Display == settings.DisplayTaskbar, OnClick: func() {
-				a.update(func(c *settings.Settings) { c.Display = settings.DisplayTaskbar })
-			}},
-			{Title: "Tray icons", Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
-				a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
-			}},
+		// How the levels are shown: directly in the menu so it is one right click away.
+		{Title: "Show on the taskbar", Checked: cfg.Display == settings.DisplayTaskbar, OnClick: func() {
+			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTaskbar })
 		}},
+		{Title: "Show as tray icons", Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
+			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
+		}},
+		{},
+		{Title: "Devices", Children: devices},
 		{Title: "Low battery level", Children: thresholds},
 		{Title: "Low battery notifications", Checked: cfg.Notify, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Notify = !c.Notify })

@@ -155,6 +155,20 @@ func (b *bar) create() bool {
 	return h != 0
 }
 
+var procGetWindow = user32.NewProc("GetWindow")
+
+// onTop reports whether our window is the topmost child of the taskbar (above the XAML layer).
+func (b *bar) onTop() bool {
+	const gwChild = 5
+	cls, _ := windows.UTF16PtrFromString("Shell_TrayWnd")
+	parent, _, _ := procFindWindow.Call(uintptr(unsafe.Pointer(cls)), 0)
+	if parent == 0 {
+		return false
+	}
+	first, _, _ := procGetWindow.Call(parent, gwChild)
+	return first == b.hwnd
+}
+
 func (b *bar) destroy() {
 	if b.hwnd != 0 {
 		procDestroyWindow.Call(b.hwnd)
@@ -179,7 +193,9 @@ func (b *bar) draw(tb, notify rect) {
 	if x < 0 {
 		x = 0
 	}
-	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), 0, uintptr(width), uintptr(height), swpNoActivate|swpNoZOrder|swpShowWindow)
+	// HWND_TOP (0): on Windows 11 the taskbar content is a XAML layer
+	// (DesktopWindowContentBridge) that covers the whole taskbar; we must sit above it.
+	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), 0, uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
 	b.lastTB, b.lastNotify = tb, notify
 
 	screen, _, _ := procGetDC.Call(0)

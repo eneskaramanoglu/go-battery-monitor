@@ -331,8 +331,10 @@ func (t *Tray) repositionBar() {
 		r, _, _ := procIsWindow.Call(t.bar.hwnd)
 		alive = r != 0
 	}
-	if !alive || tb != t.bar.lastTB || notify != t.bar.lastNotify {
-		t.applyBar() // first draw, Explorer restart, taskbar resized or tray icons added/removed
+	if !alive || tb != t.bar.lastTB || notify != t.bar.lastNotify || !t.bar.onTop() {
+		// first draw, Explorer restart, taskbar resized, tray icons added/removed, or the
+		// taskbar raised its own XAML layer above us again
+		t.applyBar()
 	}
 }
 

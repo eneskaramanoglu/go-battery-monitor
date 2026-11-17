@@ -43,7 +43,7 @@ Seviyeler 60 saniyede bir okunur; bir HID cihaz takılınca/çıkarılınca (2 s
 
 ## Ayarlar ve bildirimler
 
-Sağ tık menüsü: **Devices** (cihaz ikonlarını gizle/göster), **Low battery level** (eşik: %5–30), **Low battery notifications**, **Start with Windows**. Bir cihaz eşiğe indiğinde bir kez Windows bildirimi gösterilir; şarja takılınca veya eşiğin 5 puan üstüne çıkınca yeniden kurulur. Ayarlar `%APPDATA%\go-battery-monitor\settings.json` dosyasında saklanır.
+Sağ tık menüsü (görev çubuğundaki yazıya veya tepsi ikonuna): **Show on the taskbar** / **Show as tray icons** (görünüm), **Devices** (cihaz ikonlarını gizle/göster), **Low battery level** (eşik: %5–30), **Low battery notifications**, **Start with Windows**. Bir cihaz eşiğe indiğinde bir kez Windows bildirimi gösterilir; şarja takılınca veya eşiğin 5 puan üstüne çıkınca yeniden kurulur. Ayarlar `%APPDATA%\go-battery-monitor\settings.json` dosyasında saklanır.
 
 ## Kullanım
 
