@@ -155,10 +155,7 @@ func tooltip(st []device.Status, err error) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		lvl := "?"
-		if s.Percent >= 0 {
-			lvl = fmt.Sprintf("%d%%", s.Percent)
-		}
+		lvl := s.LevelText()
 		if s.Charging {
 			lvl += " ⚡"
 		}

@@ -29,17 +29,26 @@ type Status struct {
 	Name       string // shown to the user
 	Via        string // "2.4 GHz receiver", "Bluetooth", "USB cable", ...
 	Kind       Kind
-	Percent    int // 0..100, -1 when unknown
+	Percent    int    // 0..100, -1 when unknown
+	Level      string // coarse level ("Low", "Full"...) for devices that report no percentage
 	Charging   bool
 	Asleep     bool // receiver answered, device sleeping: keep showing the last value
 	Millivolts int  // 0 when the device does not report a voltage
 }
 
-func (s Status) String() string {
-	level := "?"
-	if s.Percent >= 0 {
-		level = fmt.Sprintf("%d%%", s.Percent)
+// LevelText is the battery level as shown to the user: "85%", "Low", or "?".
+func (s Status) LevelText() string {
+	switch {
+	case s.Percent >= 0:
+		return fmt.Sprintf("%d%%", s.Percent)
+	case s.Level != "":
+		return s.Level
 	}
+	return "?"
+}
+
+func (s Status) String() string {
+	level := s.LevelText()
 	if s.Charging {
 		level += " (charging)"
 	}
