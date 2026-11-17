@@ -24,6 +24,12 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 - Tepsi modunda `debug.SetGCPercent(50)` ve `debug.SetMemoryLimit(16 MiB)`.
 - Yoklama (poll) tek bir goroutine'de, 60 saniyede bir; cihazlar takılınca/uyanınca ek yoklama.
 
+## Desteklenen cihazlar
+
+| Sürücü | Cihazlar | Kaynak |
+|---|---|---|
+| `bluetooth` | Windows'un pil seviyesini bildiği her Bluetooth cihaz (BLE fare/klavye, eller serbest kulaklıklar...) | Windows cihaz özelliği `DEVPKEY_Bluetooth_Battery` |
+
 ## Kullanım
 
 ```
