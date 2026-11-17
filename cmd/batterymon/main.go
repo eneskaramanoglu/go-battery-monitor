@@ -12,7 +12,6 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,10 +26,26 @@ import (
 
 const pollInterval = 60 * time.Second
 
+var demo bool
+
+// poll reads every device, or returns sample devices in --demo mode.
+func poll() ([]device.Status, error) {
+	if !demo {
+		return device.PollAll()
+	}
+	return []device.Status{
+		{Key: "demo:mouse", Name: "Demo mouse", Via: "2.4 GHz receiver", Kind: device.Mouse, Percent: 85},
+		{Key: "demo:headset", Name: "Demo headset", Via: "2.4 GHz receiver", Kind: device.Headset, Percent: 12},
+		{Key: "demo:pad", Name: "Demo controller", Via: "USB cable", Kind: device.Gamepad, Percent: 40, Charging: true},
+		{Key: "demo:kbd", Name: "Demo keyboard", Via: "Bluetooth", Kind: device.Keyboard, Percent: 100, Asleep: true},
+	}, nil
+}
+
 func main() {
 	list := flag.Bool("list", false, "print devices and battery levels, then exit")
 	dump := flag.Bool("dump", false, "print every HID collection, then exit")
 	ver := flag.Bool("version", false, "print the version, then exit")
+	flag.BoolVar(&demo, "demo", false, "show sample devices instead of real ones (UI testing)")
 	flag.Parse()
 
 	if *ver {
@@ -117,16 +132,23 @@ func runTray() {
 		mu.Unlock()
 		go func() {
 			defer func() { mu.Lock(); polling = false; mu.Unlock() }()
-			st, err := device.PollAll()
-			if t != nil {
-				t.SetTooltip(tooltip(st, err))
+			st, err := poll()
+			icons := make([]tray.Icon, 0, len(st))
+			for _, s := range st {
+				icons = append(icons, iconFor(s))
 			}
+			t.SetTooltip(tooltip(st, err))
+			t.SetIcons(icons)
 		}()
 	}
-	menu := []tray.MenuItem{
-		{Title: "Refresh now", OnClick: refresh},
-		{},
-		{Title: "Exit", OnClick: func() { t.Quit() }},
+	menu := func() []tray.MenuItem {
+		return []tray.MenuItem{
+			{Title: "Battery monitor " + version.String(), Disabled: true},
+			{},
+			{Title: "Refresh now", OnClick: refresh},
+			{},
+			{Title: "Exit", OnClick: func() { t.Quit() }},
+		}
 	}
 	err := tray.Run("Battery monitor: reading devices...", menu, refresh, func(tr *tray.Tray) {
 		t = tr
@@ -150,18 +172,7 @@ func tooltip(st []device.Status, err error) string {
 	if len(st) == 0 {
 		return "Battery monitor: no supported device"
 	}
-	var b strings.Builder
-	for i, s := range st {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-		lvl := s.LevelText()
-		if s.Charging {
-			lvl += " ⚡"
-		}
-		fmt.Fprintf(&b, "%s: %s", s.Name, lvl)
-	}
-	return b.String()
+	return "Battery monitor"
 }
 
 // singleInstance returns false when another copy is already running.

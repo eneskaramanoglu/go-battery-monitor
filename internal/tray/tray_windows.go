@@ -1,5 +1,6 @@
-// Package tray is a minimal notification-area icon written directly against Win32:
-// a message-only window, one tray icon with a tooltip, and a right-click menu.
+// Package tray is the notification-area UI written directly against Win32: a message-only
+// window, one icon per device with its battery level drawn in it (or the app icon when there
+// is no device), tooltips, and a right-click menu.
 package tray
 
 import (
@@ -24,6 +25,7 @@ var (
 	procPostMessage         = user32.NewProc("PostMessageW")
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
 	procLoadIcon            = user32.NewProc("LoadIconW")
+	procLoadImage           = user32.NewProc("LoadImageW")
 	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
 	procAppendMenu          = user32.NewProc("AppendMenuW")
 	procTrackPopupMenu      = user32.NewProc("TrackPopupMenu")
@@ -35,25 +37,29 @@ var (
 )
 
 const (
-	wmDestroy     = 0x0002
-	wmClose       = 0x0010
-	wmLButtonUp   = 0x0202
-	wmRButtonUp   = 0x0205
-	wmApp         = 0x8000
-	wmTrayCB      = wmApp + 1
-	wmSetTip      = wmApp + 2
-	nimAdd        = 0
-	nimModify     = 1
-	nimDelete     = 2
-	nifMessage    = 0x1
-	nifIcon       = 0x2
-	nifTip        = 0x4
-	mfString      = 0x0
-	mfSeparator   = 0x800
-	tpmReturnCmd  = 0x100
-	tpmRightAlign = 0x8
-	hwndMessage   = ^uintptr(2) // (HWND)-3
-	idiApp        = 32512
+	wmDestroy       = 0x0002
+	wmClose         = 0x0010
+	wmSettingChange = 0x001A
+	wmDpiChanged    = 0x02E0
+	wmLButtonUp     = 0x0202
+	wmRButtonUp     = 0x0205
+	wmApp           = 0x8000
+	wmTrayCB        = wmApp + 1
+	wmApply         = wmApp + 2
+	nimAdd          = 0
+	nimModify       = 1
+	nimDelete       = 2
+	nifMessage      = 0x1
+	nifIcon         = 0x2
+	nifTip          = 0x4
+	mfString        = 0x0
+	mfGrayed        = 0x1
+	mfChecked       = 0x8
+	mfSeparator     = 0x800
+	tpmReturnCmd    = 0x100
+	tpmRightAlign   = 0x8
+	idiApp          = 32512
+	appIconID       = 1
 )
 
 type wndClassEx struct {
@@ -90,30 +96,60 @@ type notifyIconData struct {
 	BalloonIcon      uintptr
 }
 
-// MenuItem is one entry of the right-click menu; an empty Title draws a separator.
-type MenuItem struct {
-	Title   string
-	OnClick func()
+// Style picks the colour of a device icon.
+type Style int
+
+const (
+	Normal   Style = iota
+	Low            // red
+	Charging       // green
+	Dim            // grey: asleep / last known value
+)
+
+// Icon is one device icon: Text is drawn into it ("85"), Tooltip shows on hover.
+type Icon struct {
+	Key     string
+	Text    string
+	Tooltip string
+	Style   Style
 }
 
-// Tray is the running icon. Create it with Run; SetTooltip is safe from any goroutine.
+// MenuItem is one entry of the right-click menu; an empty Title draws a separator.
+// Checked and Disabled are read each time the menu opens.
+type MenuItem struct {
+	Title    string
+	OnClick  func()
+	Checked  func() bool
+	Disabled bool
+}
+
+// Tray is the running UI. SetIcons, SetTooltip and Quit are safe from any goroutine.
 type Tray struct {
-	hwnd        uintptr
-	nid         notifyIconData
-	menu        []MenuItem
-	mu          sync.Mutex
-	pendingTip  string
-	taskbarMsg  uint32 // "TaskbarCreated": Explorer restarted, re-add the icon
-	onLeftClick func()
+	hwnd       uintptr
+	taskbarMsg uint32
+	menu       func() []MenuItem
+	onLeft     func()
+
+	mu      sync.Mutex
+	want    []Icon // latest requested icons, applied on the UI thread
+	appTip  string
+	shown   map[string]*shownIcon
+	nextID  uint32
+	appIcon *notifyIconData // nil while device icons are shown
+}
+
+type shownIcon struct {
+	nid  notifyIconData
+	icon Icon
 }
 
 var current *Tray
 
-// Run creates the icon and runs the Win32 message loop on the calling goroutine until Quit.
-// ready is called once the icon exists.
-func Run(tip string, menu []MenuItem, onLeftClick func(), ready func(*Tray)) error {
+// Run creates the tray and runs the Win32 message loop on the calling goroutine until Quit.
+// menu builds the right-click menu each time it opens; ready is called once the tray exists.
+func Run(tip string, menu func() []MenuItem, onLeftClick func(), ready func(*Tray)) error {
 	runtime.LockOSThread()
-	t := &Tray{menu: menu, onLeftClick: onLeftClick}
+	t := &Tray{menu: menu, onLeft: onLeftClick, appTip: tip, shown: map[string]*shownIcon{}, nextID: 100}
 	current = t
 
 	inst, _ := getModuleHandle()
@@ -121,8 +157,10 @@ func Run(tip string, menu []MenuItem, onLeftClick func(), ready func(*Tray)) err
 	wc := wndClassEx{WndProc: syscall.NewCallback(wndProc), Instance: inst, ClassName: cls}
 	wc.Size = uint32(unsafe.Sizeof(wc))
 	procRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc)))
+	// A hidden top-level window rather than a message-only one: only top-level windows get the
+	// broadcasts we need (TaskbarCreated after an Explorer restart, WM_SETTINGCHANGE on theme change).
 	hwnd, _, err := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(cls)),
-		0, 0, 0, 0, 0, hwndMessage, 0, inst, 0)
+		0, 0, 0, 0, 0, 0, 0, inst, 0)
 	if hwnd == 0 {
 		return err
 	}
@@ -131,13 +169,8 @@ func Run(tip string, menu []MenuItem, onLeftClick func(), ready func(*Tray)) err
 	r, _, _ := procRegisterWindowMsg.Call(uintptr(unsafe.Pointer(tc)))
 	t.taskbarMsg = uint32(r)
 
-	icon := AppIcon()
-	t.nid = notifyIconData{Wnd: hwnd, ID: 1, Flags: nifMessage | nifIcon | nifTip, CallbackMessage: wmTrayCB, Icon: icon}
-	t.nid.Size = uint32(unsafe.Sizeof(t.nid))
-	setTip(&t.nid, tip)
-	procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&t.nid)))
-	defer procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&t.nid)))
-
+	t.apply()
+	defer t.removeAll()
 	if ready != nil {
 		ready(t)
 	}
@@ -152,16 +185,118 @@ func Run(tip string, menu []MenuItem, onLeftClick func(), ready func(*Tray)) err
 	}
 }
 
-// SetTooltip replaces the hover text (Windows keeps at most 127 characters).
-func (t *Tray) SetTooltip(s string) {
+// SetIcons replaces the device icons. With no icons the app icon is shown instead.
+func (t *Tray) SetIcons(icons []Icon) {
 	t.mu.Lock()
-	t.pendingTip = s
+	t.want = append([]Icon(nil), icons...)
 	t.mu.Unlock()
-	procPostMessage.Call(t.hwnd, wmSetTip, 0, 0)
+	procPostMessage.Call(t.hwnd, wmApply, 0, 0)
 }
 
-// Quit removes the icon and ends Run.
+// SetTooltip sets the hover text of the app icon (shown when there is no device).
+func (t *Tray) SetTooltip(s string) {
+	t.mu.Lock()
+	t.appTip = s
+	t.mu.Unlock()
+	procPostMessage.Call(t.hwnd, wmApply, 0, 0)
+}
+
+// Quit removes the icons and ends Run.
 func (t *Tray) Quit() { procPostMessage.Call(t.hwnd, wmClose, 0, 0) }
+
+// apply reconciles the shown icons with t.want. UI thread only.
+func (t *Tray) apply() {
+	t.mu.Lock()
+	want, tip := t.want, t.appTip
+	t.mu.Unlock()
+	light := taskbarIsLight()
+
+	keep := map[string]bool{}
+	for _, ic := range want {
+		keep[ic.Key] = true
+		s := t.shown[ic.Key]
+		if s == nil {
+			s = &shownIcon{nid: t.newNID(t.nextID)}
+			t.nextID++
+			t.shown[ic.Key] = s
+			s.icon = ic
+			t.setIconImage(s, light)
+			setTip(&s.nid, ic.Tooltip)
+			procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&s.nid)))
+			continue
+		}
+		redraw := s.icon.Text != ic.Text || s.icon.Style != ic.Style
+		s.icon = ic
+		if redraw {
+			t.setIconImage(s, light)
+		}
+		setTip(&s.nid, ic.Tooltip)
+		procShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&s.nid)))
+	}
+	for k, s := range t.shown {
+		if !keep[k] {
+			procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&s.nid)))
+			procDestroyIcon.Call(s.nid.Icon)
+			delete(t.shown, k)
+		}
+	}
+
+	switch {
+	case len(t.shown) == 0 && t.appIcon == nil:
+		n := t.newNID(appIconID)
+		n.Icon = AppIcon()
+		setTip(&n, tip)
+		t.appIcon = &n
+		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(t.appIcon)))
+	case len(t.shown) == 0:
+		setTip(t.appIcon, tip)
+		procShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(t.appIcon)))
+	case t.appIcon != nil:
+		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(t.appIcon)))
+		t.appIcon = nil
+	}
+}
+
+func (t *Tray) newNID(id uint32) notifyIconData {
+	n := notifyIconData{Wnd: t.hwnd, ID: id, Flags: nifMessage | nifIcon | nifTip, CallbackMessage: wmTrayCB}
+	n.Size = uint32(unsafe.Sizeof(n))
+	return n
+}
+
+func (t *Tray) setIconImage(s *shownIcon, light bool) {
+	old := s.nid.Icon
+	s.nid.Icon = renderTextIcon(s.icon.Text, palette(s.icon.Style, light))
+	if old != 0 {
+		procDestroyIcon.Call(old)
+	}
+}
+
+// redrawAll re-renders every icon (theme or DPI changed) and re-adds them after an Explorer
+// restart when readd is true.
+func (t *Tray) redrawAll(readd bool) {
+	light := taskbarIsLight()
+	for _, s := range t.shown {
+		t.setIconImage(s, light)
+		op := uintptr(nimModify)
+		if readd {
+			op = nimAdd
+		}
+		procShellNotifyIcon.Call(op, uintptr(unsafe.Pointer(&s.nid)))
+	}
+	if readd && t.appIcon != nil {
+		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(t.appIcon)))
+	}
+}
+
+func (t *Tray) removeAll() {
+	for _, s := range t.shown {
+		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&s.nid)))
+		procDestroyIcon.Call(s.nid.Icon)
+	}
+	if t.appIcon != nil {
+		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(t.appIcon)))
+	}
+}
 
 func setTip(n *notifyIconData, s string) {
 	u := windows.StringToUTF16(s)
@@ -173,22 +308,30 @@ func setTip(n *notifyIconData, s string) {
 }
 
 func (t *Tray) showMenu() {
+	items := t.menu()
 	m, _, _ := procCreatePopupMenu.Call()
-	for i, it := range t.menu {
+	for i, it := range items {
 		if it.Title == "" {
 			procAppendMenu.Call(m, mfSeparator, 0, 0)
 			continue
 		}
+		flags := uintptr(mfString)
+		if it.Checked != nil && it.Checked() {
+			flags |= mfChecked
+		}
+		if it.Disabled {
+			flags |= mfGrayed
+		}
 		s, _ := windows.UTF16PtrFromString(it.Title)
-		procAppendMenu.Call(m, mfString, uintptr(i+1), uintptr(unsafe.Pointer(s)))
+		procAppendMenu.Call(m, flags, uintptr(i+1), uintptr(unsafe.Pointer(s)))
 	}
 	var pt struct{ X, Y int32 }
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	procSetForegroundWindow.Call(t.hwnd) // otherwise the menu does not close when clicking away
 	cmd, _, _ := procTrackPopupMenu.Call(m, tpmReturnCmd|tpmRightAlign, uintptr(pt.X), uintptr(pt.Y), 0, t.hwnd, 0)
 	procDestroyMenu.Call(m)
-	if cmd > 0 && int(cmd) <= len(t.menu) && t.menu[cmd-1].OnClick != nil {
-		t.menu[cmd-1].OnClick()
+	if cmd > 0 && int(cmd) <= len(items) && items[cmd-1].OnClick != nil {
+		items[cmd-1].OnClick()
 	}
 }
 
@@ -200,19 +343,18 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 		case wmRButtonUp:
 			t.showMenu()
 		case wmLButtonUp:
-			if t.onLeftClick != nil {
-				t.onLeftClick()
+			if t.onLeft != nil {
+				t.onLeft()
 			}
 		}
 		return 0
-	case m == wmSetTip:
-		t.mu.Lock()
-		setTip(&t.nid, t.pendingTip)
-		t.mu.Unlock()
-		procShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&t.nid)))
+	case m == wmApply:
+		t.apply()
 		return 0
+	case m == wmSettingChange, m == wmDpiChanged:
+		t.redrawAll(false) // light/dark switch or scaling change
 	case t != nil && m == t.taskbarMsg:
-		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&t.nid)))
+		t.redrawAll(true)
 		return 0
 	case m == wmDestroy:
 		procPostQuitMessage.Call(0)
@@ -221,8 +363,6 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	r, _, _ := procDefWindowProc.Call(hwnd, uintptr(m), w, l)
 	return r
 }
-
-var procLoadImage = user32.NewProc("LoadImageW")
 
 // AppIcon returns the "APP" icon embedded by go-winres at the small (tray) size for the
 // current DPI, or the stock application icon when the exe has no resources.

@@ -32,12 +32,17 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 | `xinput` | Xbox kumandaları ve onlara takılı kulaklıklar (kaba seviye: Empty / Low / Medium / Full) | Microsoft XInput API |
 | `bluetooth` | Windows'un pil seviyesini bildiği her Bluetooth cihaz (BLE fare/klavye, eller serbest kulaklıklar...) | Windows cihaz özelliği `DEVPKEY_Bluetooth_Battery` |
 
+## Tepsi ikonları
+
+Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/siyah), %15 ve altı kırmızı, şarj olurken yeşil, uyurken gri. Kaba seviye bildiren cihazlarda baş harf (E/L/M/F). İkonlar GDI ile çizilir; tema ve DPI değişince yeniden çizilir. Önizleme: `go run ./tools/iconpreview out.png`.
+
 ## Kullanım
 
 ```
 batterymon.exe           # tepside çalışır (sağ tık: Refresh now / Exit)
 batterymon.exe --list    # bulunan cihazları ve pil seviyelerini yazar
 batterymon.exe --dump    # tüm HID koleksiyonlarını yazar (yeni cihaz eklemek için)
+batterymon.exe --demo    # örnek cihazlarla tepsi arayüzünü gösterir (geliştirme)
 ```
 
 ## Derleme
@@ -91,7 +96,7 @@ protokolleri kendi USB yakalamalarımız ve analizlerimizle çıkarılır. Kural
 
 ## Yol haritası
 
-1. **Görev çubuğu metni** (`🎧 40%  🖱 85%`), pil yüzdesini çizen tepsi ikonları (GDI), koyu/açık tema, DPI.
+1. **Görev çubuğu metni** (`🎧 40%  🖱 85%`).
 2. **Manifest + ikon** (`go-winres`): DPI farkındalığı, Common Controls v6.
 3. **Sürücüler** (önce elimizdeki donanım):
    - Windows'un zaten bildiği Bluetooth pil seviyeleri (`DEVPKEY_Bluetooth_DeviceBattery`)
