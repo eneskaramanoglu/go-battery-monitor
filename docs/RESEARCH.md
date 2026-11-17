@@ -24,8 +24,8 @@ eklenince önemli hale gelir.
 
 | Cihaz | VID:PID | Dikkate değer koleksiyonlar | Durum |
 |---|---|---|---|
-| ATK 8K fare alıcısı | `373B:1278` | MI 1: `FF02:0002` (17/17), `FF06:0002` (49/49), `FF04:0002` (feature 8) | Yakalama yapılacak |
-| ATK N9 Pro kulaklık alıcısı | `373B:11CB` | MI 3: `FF02:0002` (65/65); ayrıca sanal COM portu (COM3) | Yakalama yapılacak |
+| ATK 8K fare alıcısı | `373B:1278` | MI 1: `FF02:0002` (17/17), `FF06:0002` (49/49), `FF04:0002` (feature 8) | Çerçeve formatı çözüldü ve donanımda doğrulandı; pil okuma doğrulanmadı ([compx.md](protocols/compx.md)) |
+| ATK N9 Pro kulaklık alıcısı | `373B:11CB` | MI 3: `FF02:0002` (65/65); ayrıca sanal COM portu (COM3) | ATK yalnızca masaüstü uygulamasında seri port üzerinden (9600 baud) destekliyor; protokol web paketinde yok |
 | DualSense | `054C:0CE6` | Bluetooth; bağlıyken HID görünür | Giriş raporu herkese açık belgelenmiş |
 | NuPhy Kick75 | `19F5:1026` / `2620` | MI 3: `0001:0000` (65/65), NuPhy IO yapılandırma kanalı | Aşağıya bakın |
 | Bilinmeyen | `1044:7A42` | `FF01:0001`, `FF00:0001` (65/65, feature 9) | Ne olduğu belirlenecek |
