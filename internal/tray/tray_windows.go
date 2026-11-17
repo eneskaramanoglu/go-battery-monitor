@@ -131,7 +131,7 @@ func Run(tip string, menu []MenuItem, onLeftClick func(), ready func(*Tray)) err
 	r, _, _ := procRegisterWindowMsg.Call(uintptr(unsafe.Pointer(tc)))
 	t.taskbarMsg = uint32(r)
 
-	icon, _, _ := procLoadIcon.Call(0, idiApp)
+	icon := AppIcon()
 	t.nid = notifyIconData{Wnd: hwnd, ID: 1, Flags: nifMessage | nifIcon | nifTip, CallbackMessage: wmTrayCB, Icon: icon}
 	t.nid.Size = uint32(unsafe.Sizeof(t.nid))
 	setTip(&t.nid, tip)
@@ -220,6 +220,21 @@ func wndProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	}
 	r, _, _ := procDefWindowProc.Call(hwnd, uintptr(m), w, l)
 	return r
+}
+
+var procLoadImage = user32.NewProc("LoadImageW")
+
+// AppIcon returns the "APP" icon embedded by go-winres at the small (tray) size for the
+// current DPI, or the stock application icon when the exe has no resources.
+func AppIcon() uintptr {
+	inst, _ := getModuleHandle()
+	name, _ := windows.UTF16PtrFromString("APP")
+	const imageIcon, lrDefaultSize, lrShared = 1, 0x40, 0x8000
+	h, _, _ := procLoadImage.Call(inst, uintptr(unsafe.Pointer(name)), imageIcon, 0, 0, lrDefaultSize|lrShared)
+	if h == 0 {
+		h, _, _ = procLoadIcon.Call(0, idiApp)
+	}
+	return h
 }
 
 func getModuleHandle() (uintptr, error) {
