@@ -73,7 +73,8 @@ func barItemFor(s device.Status, threshold int, brandColors bool) tray.BarItem {
 	if style == tray.Charging {
 		style = tray.Normal // the charging bolt carries the colour, the number stays readable
 	}
-	item := tray.BarItem{Key: s.Key, Glyph: glyph, Text: levelText(s), Style: style, Charging: s.Charging, Fill: -1}
+	item := tray.BarItem{Key: s.Key, Glyph: glyph, Text: levelText(s), Style: style, Charging: s.Charging, Fill: -1,
+		Tooltip: ic.Tooltip}
 	if a := brandAccent(s.Brand, brandColors); a != nil {
 		item.Accent = a
 		item.Fill = s.Percent // -1 (coarse level only) draws no bar

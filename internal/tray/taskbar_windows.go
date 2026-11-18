@@ -70,6 +70,8 @@ type BarItem struct {
 	Accent *Accent
 	// Fill is the level drawn in the bar, 0..100; -1 draws no bar.
 	Fill int
+	// Tooltip is shown when the mouse hovers the item.
+	Tooltip string
 	// Caption is a tiny label (up to 3 characters) drawn at the glyph's lower right, to tell
 	// two devices of the same kind apart.
 	Caption string
@@ -93,9 +95,11 @@ type bar struct {
 	host               taskbarHost // the taskbar this window lives in
 	items              []BarItem
 	spans              []span
-	lastTB, lastNotify rect // geometry used for the last draw
-	pointerButton      int  // button pressed in the current pointer gesture: 1 left, 2 right
-	vertical           bool // column layout (spans hold y ranges)
+	lastTB, lastNotify rect    // geometry used for the last draw
+	pointerButton      int     // button pressed in the current pointer gesture: 1 left, 2 right
+	vertical           bool    // column layout (spans hold y ranges)
+	tip                uintptr // tooltip control
+	hoverKey           string  // item the tooltip currently describes
 }
 
 // keyAt returns the key of the item under the client point (the nearest item when between
@@ -275,6 +279,9 @@ func (b *bar) create() bool {
 	h, _, _ := procCreateWindowEx.Call(wsExLayered|wsExNoActivate, uintptr(unsafe.Pointer(cls)), 0,
 		wsChild|wsVisible|wsClipSiblings, 0, 0, 1, 1, b.host.hwnd, 0, inst, 0)
 	b.hwnd = h
+	if h != 0 {
+		b.createTooltip()
+	}
 	return h != 0
 }
 
@@ -288,10 +295,16 @@ func (b *bar) onTop() bool {
 }
 
 func (b *bar) destroy() {
+	// The tooltip's owner is the taskbar itself (a child window cannot own a popup), so it
+	// is not destroyed with our window: destroy it explicitly.
+	if b.tip != 0 {
+		procDestroyWindow.Call(b.tip)
+	}
 	if b.hwnd != 0 {
 		procDestroyWindow.Call(b.hwnd)
 		b.hwnd = 0
 	}
+	b.tip, b.hoverKey = 0, ""
 	b.lastTB, b.lastNotify = rect{}, rect{}
 }
 
@@ -322,6 +335,8 @@ func (b *bar) draw(tb, notify rect) {
 	// (DesktopWindowContentBridge) that covers the whole taskbar; we must sit above it.
 	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), uintptr(y), uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
 	b.lastTB, b.lastNotify, b.spans = tb, notify, spans
+	b.resizeTooltip()
+	b.hoverKey = invalidKey // items may have changed: refresh the text on the next mouse move
 
 	screen, _, _ := procGetDC.Call(0)
 	defer procReleaseDC.Call(0, screen)
@@ -393,6 +408,13 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 			pt := struct{ X, Y int32 }{int32(int16(l)), int32(int16(l >> 16))} // screen coords
 			procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
 			t.barClick(hwnd, btn, int(pt.X), int(pt.Y))
+		}
+		return 0
+	case wmMouseMove:
+		if t != nil {
+			if b := t.barFor(hwnd); b != nil {
+				b.hover(int(int16(l)), int(int16(l>>16)))
+			}
 		}
 		return 0
 	case wmLButtonUp:
