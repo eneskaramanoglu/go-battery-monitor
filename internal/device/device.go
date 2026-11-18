@@ -32,6 +32,7 @@ type Status struct {
 	Kind       Kind
 	Percent    int    // 0..100, -1 when unknown
 	Level      string // coarse level ("Low", "Full"...) for devices that report no percentage
+	Detail     string // extra breakdown for the tooltip, e.g. "Buds 80% / 70%, case 40%"
 	Charging   bool
 	Asleep     bool // receiver answered, device sleeping: keep showing the last value
 	Millivolts int  // 0 when the device does not report a voltage

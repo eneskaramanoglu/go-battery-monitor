@@ -2,7 +2,11 @@ module github.com/eneskaramanoglu/go-battery-monitor
 
 go 1.27
 
-require golang.org/x/sys v0.50.0
+require (
+	github.com/go-ole/go-ole v1.2.6
+	github.com/saltosystems/winrt-go v0.0.0-20261016124014-b298124d7472
+	golang.org/x/sys v0.50.0
+)
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect

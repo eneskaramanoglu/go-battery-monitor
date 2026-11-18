@@ -38,6 +38,10 @@ func iconFor(s device.Status, threshold int) tray.Icon {
 	if s.Asleep {
 		tip.WriteString(", asleep (last known)")
 	}
+	if s.Detail != "" {
+		tip.WriteString("\n")
+		tip.WriteString(s.Detail)
+	}
 	if s.Via != "" {
 		tip.WriteString("\n")
 		tip.WriteString(s.Via)
@@ -73,6 +77,9 @@ func summary(st []device.Status) string {
 		line := "\n" + s.Name + ": " + s.LevelText()
 		if s.Charging {
 			line += " (charging)"
+		}
+		if s.Detail != "" {
+			line += " - " + s.Detail
 		}
 		if b.Len()+len(line) > 127 {
 			break

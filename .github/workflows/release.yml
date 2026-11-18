@@ -36,7 +36,7 @@ jobs:
             $dir = "dist/go-battery-monitor-$v-windows-$a"
             New-Item -ItemType Directory -Force $dir | Out-Null
             Copy-Item $exe "$dir/batterymon.exe"
-            Copy-Item LICENSE, README.md $dir
+            Copy-Item LICENSE, README.md, THIRD_PARTY_NOTICES.txt $dir
             Compress-Archive -Path "$dir/*" -DestinationPath "$dir.zip"
           }
           Get-FileHash dist/*.zip, dist/*.exe -Algorithm SHA256 |
