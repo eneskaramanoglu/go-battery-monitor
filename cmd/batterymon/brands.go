@@ -10,6 +10,7 @@ var brandAccents = map[string]*tray.Accent{
 	"playstation": {Dark: tray.RGB{R: 0x4C, G: 0x8D, B: 0xFF}, Light: tray.RGB{R: 0x00, G: 0x50, B: 0xD0}},
 	"xbox":        {Dark: tray.RGB{R: 0x4C, G: 0xD1, B: 0x4C}, Light: tray.RGB{R: 0x10, G: 0x7C, B: 0x10}},
 	"apple":       {Dark: tray.RGB{R: 0xD0, G: 0xD0, B: 0xD6}, Light: tray.RGB{R: 0x55, G: 0x55, B: 0x5C}},
+	"razer":       {Dark: tray.RGB{R: 0x44, G: 0xD6, B: 0x2C}, Light: tray.RGB{R: 0x1E, G: 0x8A, B: 0x12}},
 }
 
 // brandAccent returns the accent for a brand, or nil when unknown or disabled.
