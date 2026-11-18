@@ -38,12 +38,18 @@ func init() { device.Register(xinputDriver{}) }
 
 func (xinputDriver) Name() string { return "xinput" }
 
+// Poll asks Windows.Gaming.Input first (real percentages); XInput's coarse levels are only
+// used for gamepads when it found no Xbox controller, and always for headsets plugged into one.
 func (xinputDriver) Poll(ctx *device.PollContext) {
+	xboxFromWGI := pollWGI(ctx)
 	if modXInput.Load() != nil {
 		return
 	}
 	for user := range xinputMaxUsers {
 		for _, dev := range []uint32{batteryDevGamepad, batteryDevHeadset} {
+			if dev == batteryDevGamepad && xboxFromWGI > 0 {
+				continue
+			}
 			var b xinputBattery
 			r, _, _ := procXInputGetBattInfo.Call(uintptr(user), uintptr(dev), uintptr(unsafe.Pointer(&b)))
 			if r != 0 { // ERROR_DEVICE_NOT_CONNECTED or no such slot
