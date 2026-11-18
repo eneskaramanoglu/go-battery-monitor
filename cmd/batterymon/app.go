@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -233,6 +234,17 @@ func (a *app) menu(target string) []tray.MenuItem {
 		{Title: i18n.T("Language"), Children: a.languageMenu(cfg)},
 		{},
 		{Title: i18n.T("Refresh now"), OnClick: a.refresh},
+		{Title: i18n.T("Create support file"), OnClick: func() {
+			go func() {
+				path, err := writeSupportFile(st, cfg)
+				if err != nil {
+					a.t.Notify("", i18n.T("Battery monitor"), i18n.F("Could not create the support file: %v", err))
+					return
+				}
+				showInExplorer(path)
+				a.t.Notify("", i18n.T("Support file created"), i18n.F("%s - send this file to get your device supported.", filepath.Base(path)))
+			}()
+		}},
 		{Title: i18n.T("Exit"), OnClick: func() { a.t.Quit() }},
 	}...)
 }

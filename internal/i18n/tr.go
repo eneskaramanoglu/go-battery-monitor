@@ -27,7 +27,11 @@ var tr = map[string]string{
 	"Main monitor only":                       "Yalnızca ana monitör",
 	"Brand colors":                            "Marka renkleri",
 	"Refresh now":                             "Şimdi yenile",
-	"Exit":                                    "Çıkış",
+	"Create support file":                     "Destek dosyası oluştur",
+	"Support file created":                    "Destek dosyası oluşturuldu",
+	"%s - send this file to get your device supported.": "%s - cihazınızın desteklenmesi için bu dosyayı gönderin.",
+	"Could not create the support file: %v":             "Destek dosyası oluşturulamadı: %v",
+	"Exit":                                              "Çıkış",
 
 	// installer
 	"Install Battery Monitor for this user?\n\nIt is copied to your programs folder and gets a Start menu entry and an uninstaller in Settings > Apps. No administrator rights are needed.\n\nChoose No to run it from here without installing.": "Pil izleyici bu kullanıcı için kurulsun mu?\n\nProgramlar klasörüne kopyalanır; Başlat menüsüne bir kısayol ve Ayarlar > Uygulamalar'a bir kaldırıcı eklenir. Yönetici izni gerekmez.\n\nKurmadan buradan çalıştırmak için Hayır'ı seçin.",

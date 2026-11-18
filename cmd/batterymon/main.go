@@ -137,7 +137,15 @@ func runDump() error {
 		w = io.MultiWriter(os.Stdout, f)
 	}
 	fmt.Fprintf(w, "batterymon %s dump, %s\n\n", version.String(), time.Now().Format(time.RFC3339))
+	if err := writeDump(w); err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "\nSaved to %s\n", path)
+	return nil
+}
 
+// writeDump writes the HID collections, unopenable HID interfaces and Bluetooth devices.
+func writeDump(w io.Writer) error {
 	cols, err := hid.Enumerate()
 	if err != nil {
 		return err
@@ -186,7 +194,6 @@ func runDump() error {
 			fmt.Fprintf(w, "%-7s %04X:%04X connected=%-5s %-40s %v\n", enum, vid, pid, conn, n.Name(), n.Strings(pnp.KeyContainerCategory))
 		}
 	}
-	fmt.Fprintf(w, "\nSaved to %s\n", path)
 	return nil
 }
 
