@@ -30,7 +30,9 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 |---|---|---|
 | `compx` | ATK / VXE ve diğer Compx alıcılı fareler (`373B`, `3554`), ör. ATK 8K dongle `373B:1278` (gerçek cihazda test edildi). Fare uyurken son değer gri gösterilir | Kendi analizimiz: [docs/protocols/compx.md](docs/protocols/compx.md) |
 | `playstation` | DualSense, DualSense Edge: USB kabloyla; Bluetooth'ta yalnızca başka bir uygulama (ör. Steam) tam rapor modunu açtıysa. *Gerçek cihazda henüz test edilmedi.* | Giriş raporundaki pil baytı (pasif okuma) |
-| `xinput` | Xbox kumandaları ve onlara takılı kulaklıklar (kaba seviye: Empty / Low / Medium / Full) | Microsoft XInput API |
+| `airpods` | Apple AirPods / Beats: kulaklıklar ve kılıf ayrı ayrı (%10 adım), şarj durumu. Yalnızca bu PC'ye eşlenmiş modeller. *Gerçek AirPods'ta henüz test edilmedi.* | BLE "Proximity Pairing" yayını; format: Celosia & Cunche, PETS 2020 |
+| `xinput` | Xbox kumandaları: gerçek yüzde ve şarj (`Windows.Gaming.Input`); bulunamazsa XInput'un kaba seviyesi. Kumandaya takılı kulaklıklar | Windows API'leri |
+| `hid-battery` | Rapor tanımında standart pil alanı olan her HID cihaz. *Test edilmedi (elimizde böyle cihaz yok).* | USB HID Usage Tables: `0x06/0x20`, `0x85/0x64-0x66` |
 | `bluetooth` | Windows'un pil seviyesini bildiği her Bluetooth cihaz (BLE fare/klavye, eller serbest kulaklıklar...) | Windows cihaz özelliği `DEVPKEY_Bluetooth_Battery` |
 
 ## Görünüm
@@ -45,12 +47,21 @@ Seviyeler 60 saniyede bir okunur; bir HID cihaz takılınca/çıkarılınca (2 s
 
 Sağ tık menüsü (görev çubuğundaki yazıya veya tepsi ikonuna): **Show on the taskbar** / **Show as tray icons** (görünüm), **Devices** (cihaz ikonlarını gizle/göster), **Low battery level** (eşik: %5–30), **Low battery notifications**, **Start with Windows**. Bir cihaz eşiğe indiğinde bir kez Windows bildirimi gösterilir; şarja takılınca veya eşiğin 5 puan üstüne çıkınca yeniden kurulur. Ayarlar `%APPDATA%\go-battery-monitor\settings.json` dosyasında saklanır.
 
+## Gelişmiş ayarlar
+
+`%APPDATA%\go-battery-monitor\settings.json` içinde:
+
+- `"ignore": ["28BD:0947"]`: uygulamanın hiç açmayacağı cihazlar (VID:PID, `--dump` gösterir). Çizim tabletleri zaten atlanır.
+- `"experimental": true`: gerçek cihazda test edilmemiş sürücüleri açar (menüde **Experimental drivers**).
+
 ## Kullanım
 
 ```
 batterymon.exe           # tepside çalışır (sağ tık: Refresh now / Exit)
 batterymon.exe --list    # bulunan cihazları ve pil seviyelerini yazar
-batterymon.exe --dump    # tüm HID koleksiyonlarını yazar (yeni cihaz eklemek için)
+batterymon.exe --dump    # HID koleksiyonları, açılamayan HID cihazları ve Bluetooth cihazları
+                         # (ayrıca %TEMP%atterymon-dump.txt dosyasına kaydedilir)
+batterymon.exe --quit    # çalışan uygulamayı kapatır
 batterymon.exe --demo    # örnek cihazlarla tepsi arayüzünü gösterir (geliştirme)
 ```
 
