@@ -6,6 +6,8 @@
 //	batterymon --dump     print HID collections, unopenable HID devices and Bluetooth devices
 //	                      (also saved to %TEMP%\batterymon-dump.txt), then exit
 //	batterymon --quit     close the running instance
+//	batterymon --install  install for this user (Start menu, Settings > Apps), no admin needed
+//	batterymon --uninstall remove the installation
 //	batterymon --demo     sample devices instead of real ones (UI testing)
 package main
 
@@ -26,6 +28,7 @@ import (
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
 	_ "github.com/eneskaramanoglu/go-battery-monitor/internal/drivers" // registers every driver
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/i18n"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/pnp"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/settings"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/version"
@@ -57,6 +60,8 @@ func main() {
 	list := flag.Bool("list", false, "print devices and battery levels, then exit")
 	dump := flag.Bool("dump", false, "print HID and Bluetooth devices, then exit")
 	quit := flag.Bool("quit", false, "close the running instance")
+	doInstall := flag.Bool("install", false, "install for this user, then start")
+	doUninstall := flag.Bool("uninstall", false, "remove the installation")
 	ver := flag.Bool("version", false, "print the version, then exit")
 	flag.BoolVar(&demo, "demo", false, "show sample devices instead of real ones (UI testing)")
 	flag.Parse()
@@ -71,6 +76,14 @@ func main() {
 		if !quitRunning() {
 			fmt.Println("batterymon is not running")
 		}
+		return
+	case *doInstall:
+		i18n.Set(settings.Load().Language)
+		installAndRestart()
+		return
+	case *doUninstall:
+		i18n.Set(settings.Load().Language)
+		uninstall()
 		return
 	case *list || *dump:
 		attachConsole()
@@ -93,6 +106,9 @@ func main() {
 
 	if !singleInstance() {
 		return
+	}
+	if offerInstall() {
+		return // the installed copy has been started
 	}
 	runTray()
 }
@@ -187,11 +203,22 @@ func quitRunning() bool {
 	return true
 }
 
+var instanceLock windows.Handle
+
 // singleInstance returns false when another copy is already running.
 func singleInstance() bool {
 	name, _ := windows.UTF16PtrFromString(`Local\go-battery-monitor`)
-	_, err := windows.CreateMutex(nil, false, name)
+	h, err := windows.CreateMutex(nil, false, name)
+	instanceLock = h
 	return err != windows.ERROR_ALREADY_EXISTS
+}
+
+// releaseInstanceLock lets another copy start (used right before starting the installed one).
+func releaseInstanceLock() {
+	if instanceLock != 0 {
+		windows.CloseHandle(instanceLock)
+		instanceLock = 0
+	}
 }
 
 // attachConsole makes --list / --dump print into the terminal they were started from, since

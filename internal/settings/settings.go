@@ -25,6 +25,8 @@ type Settings struct {
 	MainMonitorOnly bool `json:"mainMonitorOnly"`
 	// NoBrandColors turns off maker colours on the taskbar (on by default).
 	NoBrandColors bool `json:"noBrandColors"`
+	// InstallDeclined: the user chose to run the downloaded exe without installing it.
+	InstallDeclined bool `json:"installDeclined"`
 }
 
 // Display modes.

@@ -29,6 +29,12 @@ var tr = map[string]string{
 	"Refresh now":                             "Şimdi yenile",
 	"Exit":                                    "Çıkış",
 
+	// installer
+	"Install Battery Monitor for this user?\n\nIt is copied to your programs folder and gets a Start menu entry and an uninstaller in Settings > Apps. No administrator rights are needed.\n\nChoose No to run it from here without installing.": "Pil izleyici bu kullanıcı için kurulsun mu?\n\nProgramlar klasörüne kopyalanır; Başlat menüsüne bir kısayol ve Ayarlar > Uygulamalar'a bir kaldırıcı eklenir. Yönetici izni gerekmez.\n\nKurmadan buradan çalıştırmak için Hayır'ı seçin.",
+	"Installation failed: %v": "Kurulum başarısız: %v",
+	"Battery Monitor has been removed. Your settings are kept in %s.": "Pil izleyici kaldırıldı. Ayarlarınız %s içinde duruyor.",
+	"Uninstall failed: %v": "Kaldırma başarısız: %v",
+
 	// connections
 	"2.4 GHz receiver":          "2.4 GHz alıcı",
 	"USB cable":                 "USB kablo",
