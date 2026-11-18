@@ -21,6 +21,8 @@ type Settings struct {
 	Experimental bool `json:"experimental"`
 	// Language is "" (follow Windows) or a code from i18n.Languages.
 	Language string `json:"language"`
+	// MainMonitorOnly keeps the taskbar text off secondary monitors' taskbars.
+	MainMonitorOnly bool `json:"mainMonitorOnly"`
 }
 
 // Display modes.

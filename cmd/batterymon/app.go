@@ -129,7 +129,7 @@ func (a *app) render() {
 		}
 		a.t.SetTooltip(tip)
 		a.t.SetIcons(nil)
-		a.t.SetTaskbar(items)
+		a.t.SetTaskbar(items, !cfg.MainMonitorOnly)
 		return
 	}
 	icons := make([]tray.Icon, 0, len(visible))
@@ -137,7 +137,7 @@ func (a *app) render() {
 		icons = append(icons, iconFor(s, cfg.LowThreshold))
 	}
 	a.t.SetTooltip(tip)
-	a.t.SetTaskbar(nil)
+	a.t.SetTaskbar(nil, false)
 	a.t.SetIcons(icons)
 }
 
@@ -202,6 +202,14 @@ func (a *app) menu(target string) []tray.MenuItem {
 		}},
 		{Title: i18n.T("Show as tray icons"), Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
+		}},
+		{Title: i18n.T("Show on"), Children: []tray.MenuItem{
+			{Title: i18n.T("All monitors"), Checked: !cfg.MainMonitorOnly, OnClick: func() {
+				a.update(func(c *settings.Settings) { c.MainMonitorOnly = false })
+			}},
+			{Title: i18n.T("Main monitor only"), Checked: cfg.MainMonitorOnly, OnClick: func() {
+				a.update(func(c *settings.Settings) { c.MainMonitorOnly = true })
+			}},
 		}},
 		{},
 		{Title: i18n.T("Devices"), Children: devices},

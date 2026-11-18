@@ -73,6 +73,7 @@ type span struct{ x0, x1 int }
 
 type bar struct {
 	hwnd               uintptr
+	host               taskbarHost // the taskbar this window lives in
 	items              []BarItem
 	spans              []span
 	lastTB, lastNotify rect // geometry used for the last draw
@@ -100,71 +101,140 @@ func (b *bar) keyAt(x int) string {
 	return b.items[best].Key
 }
 
-// SetTaskbar shows items as text on the taskbar; nil removes it. It reports nothing when the
-// taskbar cannot host it (vertical taskbar, Explorer not running): use TaskbarAvailable.
-func (t *Tray) SetTaskbar(items []BarItem) {
+// SetTaskbar shows items as text on the taskbar(s); nil removes it. allMonitors also puts a
+// copy on every secondary monitor's taskbar.
+func (t *Tray) SetTaskbar(items []BarItem, allMonitors bool) {
 	t.mu.Lock()
 	t.wantBar = append([]BarItem(nil), items...)
+	t.barAll = allMonitors
 	t.barSet = true
 	t.mu.Unlock()
 	procPostMessage.Call(t.hwnd, wmApply, 0, 0)
 }
 
-// TaskbarAvailable reports whether there is a horizontal taskbar to draw into.
+// TaskbarAvailable reports whether the main taskbar is horizontal and can host the text.
 func TaskbarAvailable() bool {
-	_, _, ok := taskbarGeometry()
-	return ok
+	for _, h := range taskbarHosts(false) {
+		_, _, ok := h.geometry()
+		return ok
+	}
+	return false
 }
 
-// taskbarGeometry returns the taskbar, its notification area rects (screen coords) and
-// whether the taskbar is horizontal.
-func taskbarGeometry() (tb, notify rect, ok bool) {
+// taskbarHost is one taskbar window: the main one (Shell_TrayWnd) or a secondary monitor's
+// (Shell_SecondaryTrayWnd).
+type taskbarHost struct {
+	hwnd    uintptr
+	primary bool
+}
+
+// taskbarHosts lists the main taskbar and, when all is set, every secondary taskbar.
+func taskbarHosts(all bool) []taskbarHost {
+	var out []taskbarHost
 	cls, _ := windows.UTF16PtrFromString("Shell_TrayWnd")
-	h, _, _ := procFindWindow.Call(uintptr(unsafe.Pointer(cls)), 0)
-	if h == 0 {
+	if h, _, _ := procFindWindow.Call(uintptr(unsafe.Pointer(cls)), 0); h != 0 {
+		out = append(out, taskbarHost{h, true})
+	}
+	if !all {
+		return out
+	}
+	sec, _ := windows.UTF16PtrFromString("Shell_SecondaryTrayWnd")
+	for h := uintptr(0); ; {
+		h, _, _ = procFindWindowEx.Call(0, h, uintptr(unsafe.Pointer(sec)), 0)
+		if h == 0 {
+			break
+		}
+		out = append(out, taskbarHost{h, false})
+	}
+	return out
+}
+
+// secondaryClockReserve: a secondary taskbar has no notification-area window (its clock is
+// drawn inside the XAML layer), so this much room is left free at its right end, at 96 DPI.
+const secondaryClockReserve = 120
+
+// geometry returns the taskbar rect and the rect our text must stay left of (screen
+// coordinates), and whether the taskbar is horizontal.
+func (h taskbarHost) geometry() (tb, notify rect, ok bool) {
+	if r, _, _ := procIsWindow.Call(h.hwnd); r == 0 {
 		return
 	}
-	ncls, _ := windows.UTF16PtrFromString("TrayNotifyWnd")
-	n, _, _ := procFindWindowEx.Call(h, 0, uintptr(unsafe.Pointer(ncls)), 0)
-	if n == 0 {
-		return
+	procGetWindowRect.Call(h.hwnd, uintptr(unsafe.Pointer(&tb)))
+	if tb.Right-tb.Left <= tb.Bottom-tb.Top {
+		return // vertical taskbar
 	}
-	procGetWindowRect.Call(h, uintptr(unsafe.Pointer(&tb)))
-	procGetWindowRect.Call(n, uintptr(unsafe.Pointer(&notify)))
-	ok = tb.Right-tb.Left > tb.Bottom-tb.Top
+	if h.primary {
+		ncls, _ := windows.UTF16PtrFromString("TrayNotifyWnd")
+		n, _, _ := procFindWindowEx.Call(h.hwnd, 0, uintptr(unsafe.Pointer(ncls)), 0)
+		if n == 0 {
+			return
+		}
+		procGetWindowRect.Call(n, uintptr(unsafe.Pointer(&notify)))
+	} else {
+		dpi, _, _ := procGetDpiForWindow.Call(h.hwnd)
+		if dpi == 0 {
+			dpi = 96
+		}
+		notify = rect{tb.Right - int32(secondaryClockReserve*dpi/96), tb.Top, tb.Right, tb.Bottom}
+	}
+	ok = true
 	return
 }
 
 var barClassRegistered bool
 
-// applyBar creates, redraws, moves or removes the taskbar window. UI thread only.
+// applyBar creates, redraws, moves or removes the taskbar windows. UI thread only.
 func (t *Tray) applyBar() {
 	t.mu.Lock()
-	items, set := t.wantBar, t.barSet
+	items, set, all := t.wantBar, t.barSet, t.barAll
 	t.mu.Unlock()
 	if !set {
 		return
 	}
-	b := &t.bar
-	b.items = items
-	if len(items) == 0 {
-		b.destroy()
-		return
+	if t.bars == nil {
+		t.bars = map[uintptr]*bar{}
 	}
-	tb, notify, ok := taskbarGeometry()
-	if !ok {
-		b.destroy()
-		return
-	}
-	if b.hwnd != 0 {
-		if r, _, _ := procIsWindow.Call(b.hwnd); r == 0 {
-			b.hwnd = 0 // Explorer restarted and took our child window with it
+	wanted := map[uintptr]bool{}
+	if len(items) > 0 {
+		for _, h := range taskbarHosts(all) {
+			tb, notify, ok := h.geometry()
+			if !ok {
+				continue
+			}
+			wanted[h.hwnd] = true
+			b := t.bars[h.hwnd]
+			if b == nil {
+				b = &bar{host: h}
+				t.bars[h.hwnd] = b
+			}
+			b.items = items
+			if b.hwnd != 0 {
+				if r, _, _ := procIsWindow.Call(b.hwnd); r == 0 {
+					b.hwnd = 0 // Explorer restarted and took our child window with it
+				}
+			}
+			if b.hwnd == 0 && !b.create() {
+				continue
+			}
+			b.draw(tb, notify)
 		}
 	}
-	if b.hwnd == 0 && !b.create() {
-		return
+	for k, b := range t.bars {
+		if !wanted[k] {
+			b.destroy()
+			delete(t.bars, k)
+		}
 	}
-	b.draw(tb, notify)
+}
+
+// barFor finds the bar that owns a window handle (for input handling).
+func (t *Tray) barFor(hwnd uintptr) *bar {
+	for _, b := range t.bars {
+		if b.hwnd == hwnd {
+			return b
+		}
+	}
+	return nil
 }
 
 func (b *bar) create() bool {
@@ -176,13 +246,8 @@ func (b *bar) create() bool {
 		procRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc)))
 		barClassRegistered = true
 	}
-	tcls, _ := windows.UTF16PtrFromString("Shell_TrayWnd")
-	parent, _, _ := procFindWindow.Call(uintptr(unsafe.Pointer(tcls)), 0)
-	if parent == 0 {
-		return false
-	}
 	h, _, _ := procCreateWindowEx.Call(wsExLayered|wsExNoActivate, uintptr(unsafe.Pointer(cls)), 0,
-		wsChild|wsVisible|wsClipSiblings, 0, 0, 1, 1, parent, 0, inst, 0)
+		wsChild|wsVisible|wsClipSiblings, 0, 0, 1, 1, b.host.hwnd, 0, inst, 0)
 	b.hwnd = h
 	return h != 0
 }
@@ -192,12 +257,7 @@ var procGetWindow = user32.NewProc("GetWindow")
 // onTop reports whether our window is the topmost child of the taskbar (above the XAML layer).
 func (b *bar) onTop() bool {
 	const gwChild = 5
-	cls, _ := windows.UTF16PtrFromString("Shell_TrayWnd")
-	parent, _, _ := procFindWindow.Call(uintptr(unsafe.Pointer(cls)), 0)
-	if parent == 0 {
-		return false
-	}
-	first, _, _ := procGetWindow.Call(parent, gwChild)
+	first, _, _ := procGetWindow.Call(b.host.hwnd, gwChild)
 	return first == b.hwnd
 }
 
@@ -281,29 +341,35 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 			flags := uint32(w >> 16)
 			switch {
 			case flags&pointerSecondBtn != 0:
-				t.bar.pointerButton = 2
+				if b := t.barFor(hwnd); b != nil {
+					b.pointerButton = 2
+				}
 			case flags&pointerFirstBtn != 0:
-				t.bar.pointerButton = 1
+				if b := t.barFor(hwnd); b != nil {
+					b.pointerButton = 1
+				}
 			}
 		}
 		return 0
 	case wmPointerUp:
 		if t != nil {
-			btn := t.bar.pointerButton
-			t.bar.pointerButton = 0
+			btn := 0
+			if b := t.barFor(hwnd); b != nil {
+				btn, b.pointerButton = b.pointerButton, 0
+			}
 			pt := struct{ X, Y int32 }{int32(int16(l)), int32(int16(l >> 16))} // screen coords
 			procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
-			t.barClick(btn, int(pt.X))
+			t.barClick(hwnd, btn, int(pt.X))
 		}
 		return 0
 	case wmLButtonUp:
 		if t != nil {
-			t.barClick(1, int(int16(l)))
+			t.barClick(hwnd, 1, int(int16(l)))
 		}
 		return 0
 	case wmRButtonUp:
 		if t != nil {
-			t.barClick(2, int(int16(l)))
+			t.barClick(hwnd, 2, int(int16(l)))
 		}
 		return 0
 	case wmContextMenu:
@@ -316,12 +382,16 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	return r
 }
 
-func (t *Tray) barClick(button, x int) {
+func (t *Tray) barClick(hwnd uintptr, button, x int) {
 	switch button {
 	case 1:
 		call(t.cfg.OnLeftClick)
 	case 2:
-		t.showMenuFor(t.bar.keyAt(x))
+		key := ""
+		if b := t.barFor(hwnd); b != nil {
+			key = b.keyAt(x)
+		}
+		t.showMenuFor(key)
 	}
 }
 

@@ -153,7 +153,8 @@ type Tray struct {
 	notes   []note          // notifications waiting for the UI thread
 	wantBar []BarItem       // taskbar text requested by SetTaskbar
 	barSet  bool
-	bar     bar
+	barAll  bool             // also on secondary monitors' taskbars
+	bars    map[uintptr]*bar // taskbar text windows, by host taskbar
 }
 
 type shownIcon struct {
@@ -305,10 +306,12 @@ func (t *Tray) redrawAll(readd bool) {
 	if readd && t.appIcon != nil {
 		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(t.appIcon)))
 	}
-	if readd {
-		t.bar.hwnd = 0 // the old taskbar took our child window down with it
+	for _, b := range t.bars {
+		if readd {
+			b.hwnd = 0 // the old taskbar took our child window down with it
+		}
+		b.lastTB = rect{} // force a redraw (theme / DPI may have changed)
 	}
-	t.bar.lastTB = rect{} // force a redraw (theme / DPI may have changed)
 	t.applyBar()
 }
 
@@ -321,25 +324,39 @@ func (t *Tray) repositionBar() {
 	if !want {
 		return
 	}
-	tb, notify, ok := taskbarGeometry()
-	if !ok {
-		t.bar.destroy()
+	t.mu.Lock()
+	all := t.barAll
+	t.mu.Unlock()
+	hosts := taskbarHosts(all)
+	if len(hosts) != len(t.bars) {
+		t.applyBar() // a monitor (or its taskbar) came or went
 		return
 	}
-	alive := false
-	if t.bar.hwnd != 0 {
-		r, _, _ := procIsWindow.Call(t.bar.hwnd)
-		alive = r != 0
-	}
-	if !alive || tb != t.bar.lastTB || notify != t.bar.lastNotify || !t.bar.onTop() {
-		// first draw, Explorer restart, taskbar resized, tray icons added/removed, or the
-		// taskbar raised its own XAML layer above us again
-		t.applyBar()
+	for _, h := range hosts {
+		b := t.bars[h.hwnd]
+		tb, notify, ok := h.geometry()
+		if b == nil || !ok {
+			t.applyBar()
+			return
+		}
+		alive := false
+		if b.hwnd != 0 {
+			r, _, _ := procIsWindow.Call(b.hwnd)
+			alive = r != 0
+		}
+		if !alive || tb != b.lastTB || notify != b.lastNotify || !b.onTop() {
+			// first draw, Explorer restart, taskbar resized, tray icons added/removed, or the
+			// taskbar raised its own XAML layer above us again
+			t.applyBar()
+			return
+		}
 	}
 }
 
 func (t *Tray) removeAll() {
-	t.bar.destroy()
+	for _, b := range t.bars {
+		b.destroy()
+	}
 	for _, s := range t.shown {
 		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&s.nid)))
 		procDestroyIcon.Call(s.nid.Icon)
