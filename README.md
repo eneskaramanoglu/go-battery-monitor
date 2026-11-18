@@ -63,13 +63,19 @@ Sağ tık menüsü (görev çubuğundaki yazıya veya tepsi ikonuna): **Show on 
 
 ## Kullanım
 
+## Kurulum
+
+Sürümdeki `batterymon.exe`'yi çalıştırın: ilk açılışta **bu kullanıcı için kurulsun mu** diye bir kez sorar. Evet derseniz `%LOCALAPPDATA%\Programs\go-battery-monitor` klasörüne kopyalanır, Başlat menüsüne kısayol ve **Ayarlar > Uygulamalar**'a kaldırıcı eklenir; yönetici izni gerekmez. Hayır derseniz olduğu yerden (taşınabilir) çalışır ve bir daha sormaz; exe'nin yanına `portable.txt` koymak da soruyu kapatır.
+
 ```
-batterymon.exe           # tepside çalışır (sağ tık: Refresh now / Exit)
-batterymon.exe --list    # bulunan cihazları ve pil seviyelerini yazar
-batterymon.exe --dump    # HID koleksiyonları, açılamayan HID cihazları ve Bluetooth cihazları
-                         # (ayrıca %TEMP%atterymon-dump.txt dosyasına kaydedilir)
-batterymon.exe --quit    # çalışan uygulamayı kapatır
-batterymon.exe --demo    # örnek cihazlarla tepsi arayüzünü gösterir (geliştirme)
+batterymon.exe              # görev çubuğunda / tepside çalışır
+batterymon.exe --list       # bulunan cihazları ve pil seviyelerini yazar
+batterymon.exe --dump       # HID koleksiyonları, açılamayan HID cihazları ve Bluetooth cihazları
+                            # (ayrıca %TEMP%\batterymon-dump.txt dosyasına kaydedilir)
+batterymon.exe --install    # bu kullanıcı için kurar ve başlatır
+batterymon.exe --uninstall  # kaldırır (ayarlar %APPDATA% içinde kalır)
+batterymon.exe --quit       # çalışan uygulamayı kapatır
+batterymon.exe --demo       # örnek cihazlarla arayüzü gösterir (geliştirme)
 ```
 
 ## Derleme
