@@ -95,10 +95,15 @@ type bar struct {
 	spans              []span
 	lastTB, lastNotify rect // geometry used for the last draw
 	pointerButton      int  // button pressed in the current pointer gesture: 1 left, 2 right
+	vertical           bool // column layout (spans hold y ranges)
 }
 
-// keyAt returns the key of the item under client x (the nearest item when between two).
-func (b *bar) keyAt(x int) string {
+// keyAt returns the key of the item under the client point (the nearest item when between
+// two): x on a horizontal taskbar, y on a vertical one.
+func (b *bar) keyAt(x, y int) string {
+	if b.vertical {
+		x = y
+	}
 	best, bestDist := -1, 1<<30
 	for i, s := range b.spans {
 		d := 0
@@ -129,10 +134,11 @@ func (t *Tray) SetTaskbar(items []BarItem, allMonitors bool) {
 	procPostMessage.Call(t.hwnd, wmApply, 0, 0)
 }
 
-// TaskbarAvailable reports whether the main taskbar is horizontal and can host the text.
+// TaskbarAvailable reports whether there is a main taskbar to host the text (horizontal
+// taskbars get a row, vertical ones a column).
 func TaskbarAvailable() bool {
 	for _, h := range taskbarHosts(false) {
-		_, _, ok := h.geometry()
+		_, _, _, ok := h.geometry()
 		return ok
 	}
 	return false
@@ -170,16 +176,14 @@ func taskbarHosts(all bool) []taskbarHost {
 // drawn inside the XAML layer), so this much room is left free at its right end, at 96 DPI.
 const secondaryClockReserve = 120
 
-// geometry returns the taskbar rect and the rect our text must stay left of (screen
-// coordinates), and whether the taskbar is horizontal.
-func (h taskbarHost) geometry() (tb, notify rect, ok bool) {
+// geometry returns the taskbar rect and the rect our text must stay clear of (screen
+// coordinates): left of it on a horizontal taskbar, above it on a vertical one.
+func (h taskbarHost) geometry() (tb, notify rect, vertical, ok bool) {
 	if r, _, _ := procIsWindow.Call(h.hwnd); r == 0 {
 		return
 	}
 	procGetWindowRect.Call(h.hwnd, uintptr(unsafe.Pointer(&tb)))
-	if tb.Right-tb.Left <= tb.Bottom-tb.Top {
-		return // vertical taskbar
-	}
+	vertical = tb.Right-tb.Left <= tb.Bottom-tb.Top
 	if h.primary {
 		ncls, _ := windows.UTF16PtrFromString("TrayNotifyWnd")
 		n, _, _ := procFindWindowEx.Call(h.hwnd, 0, uintptr(unsafe.Pointer(ncls)), 0)
@@ -192,7 +196,11 @@ func (h taskbarHost) geometry() (tb, notify rect, ok bool) {
 		if dpi == 0 {
 			dpi = 96
 		}
-		notify = rect{tb.Right - int32(secondaryClockReserve*dpi/96), tb.Top, tb.Right, tb.Bottom}
+		reserve := int32(secondaryClockReserve * dpi / 96)
+		notify = rect{tb.Right - reserve, tb.Top, tb.Right, tb.Bottom}
+		if vertical {
+			notify = rect{tb.Left, tb.Bottom - reserve, tb.Right, tb.Bottom}
+		}
 	}
 	ok = true
 	return
@@ -214,7 +222,7 @@ func (t *Tray) applyBar() {
 	wanted := map[uintptr]bool{}
 	if len(items) > 0 {
 		for _, h := range taskbarHosts(all) {
-			tb, notify, ok := h.geometry()
+			tb, notify, vertical, ok := h.geometry()
 			if !ok {
 				continue
 			}
@@ -224,6 +232,7 @@ func (t *Tray) applyBar() {
 				b = &bar{host: h}
 				t.bars[h.hwnd] = b
 			}
+			b.vertical = vertical
 			b.items = items
 			if b.hwnd != 0 {
 				if r, _, _ := procIsWindow.Call(b.hwnd); r == 0 {
@@ -286,25 +295,32 @@ func (b *bar) destroy() {
 	b.lastTB, b.lastNotify = rect{}, rect{}
 }
 
-// draw renders the items, sizes the window to fit and places it left of the notification area.
+// draw renders the items, sizes the window to fit and places it left of (horizontal) or
+// above (vertical) the notification area.
 func (b *bar) draw(tb, notify rect) {
-	height := int(tb.Bottom - tb.Top)
 	dpi, _, _ := procGetDpiForWindow.Call(b.hwnd)
 	if dpi == 0 {
 		dpi = 96
 	}
-	px, width, spans := renderBar(b.items, height, int(dpi), taskbarIsLight())
-	if px == nil || width == 0 {
-		return
-	}
 	margin := int(4 * dpi / 96)
-	x := int(notify.Left-tb.Left) - width - margin
-	if x < 0 {
-		x = 0
+	var px []byte
+	var width, height, x, y int
+	var spans []span
+	if b.vertical {
+		width = int(tb.Right - tb.Left)
+		px, height, spans = renderColumn(b.items, width, int(dpi), taskbarIsLight())
+		y = max(0, int(notify.Top-tb.Top)-height-margin)
+	} else {
+		height = int(tb.Bottom - tb.Top)
+		px, width, spans = renderBar(b.items, height, int(dpi), taskbarIsLight())
+		x = max(0, int(notify.Left-tb.Left)-width-margin)
+	}
+	if px == nil || width == 0 || height == 0 {
+		return
 	}
 	// HWND_TOP (0): on Windows 11 the taskbar content is a XAML layer
 	// (DesktopWindowContentBridge) that covers the whole taskbar; we must sit above it.
-	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), 0, uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
+	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), uintptr(y), uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
 	b.lastTB, b.lastNotify, b.spans = tb, notify, spans
 
 	screen, _, _ := procGetDC.Call(0)
@@ -376,17 +392,17 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 			}
 			pt := struct{ X, Y int32 }{int32(int16(l)), int32(int16(l >> 16))} // screen coords
 			procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
-			t.barClick(hwnd, btn, int(pt.X))
+			t.barClick(hwnd, btn, int(pt.X), int(pt.Y))
 		}
 		return 0
 	case wmLButtonUp:
 		if t != nil {
-			t.barClick(hwnd, 1, int(int16(l)))
+			t.barClick(hwnd, 1, int(int16(l)), int(int16(l>>16)))
 		}
 		return 0
 	case wmRButtonUp:
 		if t != nil {
-			t.barClick(hwnd, 2, int(int16(l)))
+			t.barClick(hwnd, 2, int(int16(l)), int(int16(l>>16)))
 		}
 		return 0
 	case wmContextMenu:
@@ -399,14 +415,14 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 	return r
 }
 
-func (t *Tray) barClick(hwnd uintptr, button, x int) {
+func (t *Tray) barClick(hwnd uintptr, button, x, y int) {
 	switch button {
 	case 1:
 		call(t.cfg.OnLeftClick)
 	case 2:
 		key := ""
 		if b := t.barFor(hwnd); b != nil {
-			key = b.keyAt(x)
+			key = b.keyAt(x, y)
 		}
 		t.showMenuFor(key)
 	}

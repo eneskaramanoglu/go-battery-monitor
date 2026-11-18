@@ -334,8 +334,8 @@ func (t *Tray) repositionBar() {
 	}
 	for _, h := range hosts {
 		b := t.bars[h.hwnd]
-		tb, notify, ok := h.geometry()
-		if b == nil || !ok {
+		tb, notify, vertical, ok := h.geometry()
+		if b == nil || !ok || vertical != b.vertical {
 			t.applyBar()
 			return
 		}

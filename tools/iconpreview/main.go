@@ -73,6 +73,27 @@ func main() {
 			row++
 		}
 	}
+	// Vertical taskbar columns (narrow and wide), dark theme, placed at the right of the grid.
+	colItems := barItems[4:8]
+	ox := len(texts)*cell + pad
+	for ci, w := range []int{48, 100} {
+		col := tray.PreviewColumn(colItems, w, false)
+		for y := range col.Bounds().Dy() * barZoom {
+			for x := range w * barZoom {
+				c := col.NRGBAAt(x/barZoom, y/barZoom)
+				a := int(c.A)
+				bg := themes[0].bg
+				blend := func(f, b uint8) uint8 { return uint8((int(f)*a + int(b)*(255-a)) / 255) }
+				px, py := ox+x, y
+				if px < img.Bounds().Dx() && py < img.Bounds().Dy() {
+					img.SetNRGBA(px, py, color.NRGBA{blend(c.R, bg.R), blend(c.G, bg.G), blend(c.B, bg.B), 255})
+				}
+			}
+		}
+		ox += w*barZoom + pad
+		_ = ci
+	}
+
 	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)

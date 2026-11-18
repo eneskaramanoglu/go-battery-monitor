@@ -118,7 +118,7 @@ func (a *app) render() {
 	}
 
 	// Taskbar mode: text on the taskbar, a single app icon in the tray for the menu.
-	// Falls back to per-device tray icons when the taskbar is vertical or missing.
+	// Falls back to per-device tray icons when there is no taskbar to draw into.
 	if cfg.Display == settings.DisplayTaskbar && tray.TaskbarAvailable() {
 		items := make([]tray.BarItem, 0, len(visible))
 		caps := captions(visible)
