@@ -29,6 +29,7 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 | Sürücü | Cihazlar | Kaynak |
 |---|---|---|
 | `compx` | ATK / VXE ve diğer Compx alıcılı fareler (`373B`, `3554`), ör. ATK 8K dongle `373B:1278` (gerçek cihazda test edildi). Fare uyurken son değer gri gösterilir | Kendi analizimiz: [docs/protocols/compx.md](docs/protocols/compx.md) |
+| `logitech` | Logitech fareler, klavyeler, kulaklıklar: Unifying, Bolt, Lightspeed, Nano alıcıları; kablolu ve Bluetooth cihazlar (HID++ 2.0: `0x1004` / `0x1000` / `0x1001`). **Deneysel:** gerçek cihazda test edilmedi, menüde "Experimental drivers" açılınca çalışır | Logitech'in resmi belgeleri, libratbag (MIT), OpenLogi (0BSD): [docs/protocols/logitech-hidpp.md](docs/protocols/logitech-hidpp.md) |
 | `playstation` | DualSense, DualSense Edge: USB kabloyla; Bluetooth'ta yalnızca başka bir uygulama (ör. Steam) tam rapor modunu açtıysa. *Gerçek cihazda henüz test edilmedi.* | Giriş raporundaki pil baytı (pasif okuma) |
 | `airpods` | Apple AirPods / Beats: kulaklıklar ve kılıf ayrı ayrı (%10 adım), şarj durumu. Yalnızca bu PC'ye eşlenmiş modeller. *Gerçek AirPods'ta henüz test edilmedi.* | BLE "Proximity Pairing" yayını; format: Celosia & Cunche, PETS 2020 |
 | `xinput` | Xbox kumandaları: gerçek yüzde ve şarj (`Windows.Gaming.Input`); bulunamazsa XInput'un kaba seviyesi. Kumandaya takılı kulaklıklar | Windows API'leri |
@@ -136,5 +137,7 @@ git push origin v0.1.0
 - [x] Otomatik sürüm yayınlama (GitHub Actions)
 - [x] ATK / Compx fare alıcıları ([notlar](docs/protocols/compx.md))
 - [ ] ATK N9 Pro kulaklık (seri port protokolü)
-- [ ] DualShock 4, `Windows.Gaming.Input` ile Xbox kumandalarında gerçek yüzde
+- [x] Xbox kumandalarında gerçek yüzde, AirPods / Beats, genel HID pil standardı
+- [x] Logitech HID++ (deneysel)
+- [ ] DualShock 4
 - [ ] Ayarlar penceresi, çoklu dil (TR / EN)
