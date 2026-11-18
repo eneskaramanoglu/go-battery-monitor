@@ -37,3 +37,10 @@ kullanıyor (64 baytlık çerçeve, oturum anahtarıyla XOR). Bu protokolün web
 yok; NuPhy'nin pil göstergesi yalnızca başka bir protokol ailesindeki WH80 için açık. Yani bilinen,
 belgelenmiş bir pil komutu yok. Belgelenmemiş komut denemek klavye ayarlarını bozabileceği için
 şimdilik desteklenmiyor.
+
+**Güncelleme (2026-11-18):**
+
+- **NuPhy IO tekrar incelendi** (drive.nuphy.io, drive.nuphyio.com ve önizleme ortamı io-pre.nuphyio.com aynı sürüm): V3 komut tablosu (`GetBase 0xA0` … `SetIapMode 0xEF`) değişmemiş, pil komutu yok. Yapılandırıcının Kick75 özellik listesinde de pil yok. NuPhy'nin kendi pil göstergesi yalnızca "GCome" protokol ailesindeki WH80 / WH80 dongle için açık.
+- **Pasif dinleme:** `go run ./tools/listen -vid 19F5 -pid 2620` (alıcı) ve `-pid 1026` (kablo) ile 15'er saniye dinlendi; klavye hiçbir koleksiyondan kendiliğinden rapor göndermiyor. Yani "WH80'deki gibi kendiliğinden gelen pil raporu" yolu da Kick75'te yok.
+- **Kalan tek yol Bluetooth:** Kick75 Bluetooth ile eşlenirse ve standart BLE pil servisini (Battery Service 0x180F) sunuyorsa, Windows pil yüzdesini Ayarlar > Bluetooth'ta gösterir ve `bluetooth` sürücümüz bunu kendiliğinden okur. Bu henüz denenmedi (klavye şu an alıcı/kablo ile bağlı).
+- Not: Kick75'in bir de QMK/VIA sürümü var (farklı bellenim). Bu notlar NuPhy IO sürümü (`19F5:1026`, ürün adı "NuPhy Kick75 IO") içindir.
