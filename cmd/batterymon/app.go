@@ -122,7 +122,7 @@ func (a *app) render() {
 	if cfg.Display == settings.DisplayTaskbar && tray.TaskbarAvailable() {
 		items := make([]tray.BarItem, 0, len(visible))
 		for _, s := range visible {
-			items = append(items, barItemFor(s, cfg.LowThreshold))
+			items = append(items, barItemFor(s, cfg.LowThreshold, !cfg.NoBrandColors))
 		}
 		if len(visible) > 0 {
 			tip = summary(visible)
@@ -202,6 +202,9 @@ func (a *app) menu(target string) []tray.MenuItem {
 		}},
 		{Title: i18n.T("Show as tray icons"), Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
+		}},
+		{Title: i18n.T("Brand colors"), Checked: !cfg.NoBrandColors, OnClick: func() {
+			a.update(func(c *settings.Settings) { c.NoBrandColors = !c.NoBrandColors })
 		}},
 		{Title: i18n.T("Show on"), Children: []tray.MenuItem{
 			{Title: i18n.T("All monitors"), Checked: !cfg.MainMonitorOnly, OnClick: func() {

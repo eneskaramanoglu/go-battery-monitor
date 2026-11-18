@@ -66,6 +66,20 @@ type BarItem struct {
 	Text     string
 	Style    Style
 	Charging bool
+	// Accent, when set, colours the glyph and a thin level bar under the text (brand colours).
+	Accent *Accent
+	// Fill is the level drawn in the bar, 0..100; -1 draws no bar.
+	Fill int
+}
+
+// Accent is a colour with a shade for dark and for light taskbars.
+type Accent struct{ Dark, Light RGB }
+
+func (a *Accent) pick(light bool) RGB {
+	if light {
+		return a.Light
+	}
+	return a.Dark
 }
 
 // span is the horizontal extent of one item in the taskbar window (client pixels).
@@ -493,9 +507,13 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 		colAt[i] = def
 	}
 	for _, p := range parts {
-		c := palette(items[p.item].Style, light)
-		if items[p.item].Charging && p.font == glyphFont && p.s[0] == glyphCharging {
+		it := items[p.item]
+		c := palette(it.Style, light)
+		switch {
+		case it.Charging && p.font == glyphFont && p.s[0] == glyphCharging:
 			c = palette(Charging, light)
+		case it.Accent != nil && it.Style == Normal && p.font == glyphFont:
+			c = it.Accent.pick(light) // brand-coloured device glyph
 		}
 		for cx := max(0, p.x-1); cx < min(width, p.x+p.w+2); cx++ {
 			colAt[cx] = c
@@ -511,6 +529,31 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 			continue
 		}
 		out[i*4], out[i*4+1], out[i*4+2], out[i*4+3] = mul(c.B, a), mul(c.G, a), mul(c.R, a), a
+	}
+
+	// Level bars: a faint track under each accented item's text, filled to its level.
+	thick := max(2, 2*dpi/96)
+	y0 := min(height-thick, height/2+textPx*62/100)
+	for _, p := range parts {
+		it := items[p.item]
+		if it.Accent == nil || it.Fill < 0 || p.font != textFont {
+			continue
+		}
+		c := it.Accent.pick(light)
+		if it.Style != Normal {
+			c = palette(it.Style, light)
+		}
+		filled := p.x + p.w*min(it.Fill, 100)/100
+		for y := y0; y < y0+thick; y++ {
+			for x := p.x; x < min(width, p.x+p.w); x++ {
+				a := byte(70)
+				if x < filled {
+					a = 255
+				}
+				i := (y*width + x) * 4
+				out[i], out[i+1], out[i+2], out[i+3] = mul(c.B, a), mul(c.G, a), mul(c.R, a), a
+			}
+		}
 	}
 	return out, width, spans
 }

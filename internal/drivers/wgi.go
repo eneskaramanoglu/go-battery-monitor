@@ -162,7 +162,12 @@ func pollWGI(ctx *device.PollContext) (xbox int) {
 		case name == "":
 			name = "Xbox controller"
 		}
+		brand := ""
+		if c.vid == 0x045E {
+			brand = "xbox"
+		}
 		ctx.Add(device.Status{
+			Brand:    brand,
 			Key:      "wgi:" + hex4(c.vid) + ":" + hex4(c.pid) + ":" + strconv.Itoa(i),
 			Name:     name,
 			Via:      "Xbox Wireless / Bluetooth",

@@ -117,7 +117,7 @@ func (p proximity) status(key, name string) (device.Status, bool) {
 		}
 	}
 	return device.Status{
-		Key: key, Name: name, Via: "Bluetooth", Kind: device.Headset,
+		Key: key, Name: name, Via: "Bluetooth", Kind: device.Headset, Brand: "apple",
 		Percent: lowest, Charging: p.budsCharging, Detail: detail,
 	}, true
 }

@@ -31,6 +31,12 @@ func main() {
 		{Glyph: tray.GlyphMouse, Text: "85%", Charging: true},
 		{Glyph: tray.GlyphGamepad, Text: "12%", Style: tray.Low},
 		{Glyph: tray.GlyphKeyboard, Text: "Medium", Style: tray.Dim},
+		{Glyph: tray.GlyphMouse, Text: "85%", Accent: &tray.Accent{Dark: tray.RGB{R: 0x00, G: 0xB8, B: 0xFC}, Light: tray.RGB{R: 0x00, G: 0x7A, B: 0xB8}}, Fill: 85},
+		{Glyph: tray.GlyphGamepad, Text: "40%", Charging: true, Accent: &tray.Accent{Dark: tray.RGB{R: 0x4C, G: 0x8D, B: 0xFF}, Light: tray.RGB{R: 0x00, G: 0x50, B: 0xD0}}, Fill: 40},
+		{Glyph: tray.GlyphHeadset, Text: "12%", Style: tray.Low, Accent: &tray.Accent{Dark: tray.RGB{R: 0xD0, G: 0xD0, B: 0xD6}, Light: tray.RGB{R: 0x55, G: 0x55, B: 0x5C}}, Fill: 12},
+	}
+	for i := range barItems[:4] {
+		barItems[i].Fill = -1
 	}
 	const barH, barZoom = 48, 2
 	barW := tray.PreviewBar(barItems, barH, false).Bounds().Dx() * barZoom

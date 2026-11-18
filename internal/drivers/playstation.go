@@ -41,6 +41,7 @@ func (playstationDriver) Poll(ctx *device.PollContext) {
 	for _, c := range gamepads {
 		bt := isBluetoothPath(c.Path)
 		s := device.Status{
+			Brand:   "playstation",
 			Key:     "ps:" + hex4(c.ProductID) + ":" + shortID(c.Path),
 			Name:    dualSenseModels[c.ProductID],
 			Via:     "USB cable",

@@ -394,7 +394,7 @@ func pollHidpp(io hidppIO, c hid.Collection, bluetooth bool) []device.Status {
 			name = "Logitech device"
 		}
 		s := device.Status{
-			Key: key, Name: name, Via: via, Kind: kind,
+			Key: key, Name: name, Via: via, Kind: kind, Brand: "logitech",
 			Percent: b.percent, Charging: b.charging, Millivolts: b.mv,
 		}
 		if b.percent < 0 {

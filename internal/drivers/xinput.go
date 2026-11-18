@@ -73,6 +73,7 @@ func xinputStatus(user int, dev uint32, b xinputBattery) (device.Status, bool) {
 		return device.Status{}, false
 	}
 	s := device.Status{
+		Brand:   "xbox",
 		Key:     "xinput:" + strconv.Itoa(user),
 		Name:    "Xbox controller",
 		Via:     "Xbox Wireless",

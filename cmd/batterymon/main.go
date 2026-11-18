@@ -46,9 +46,9 @@ func poll(cfg settings.Settings) ([]device.Status, error) {
 		return device.PollAll(pollOptions(cfg))
 	}
 	return []device.Status{
-		{Key: "demo:mouse", Name: "Demo mouse", Via: "2.4 GHz receiver", Kind: device.Mouse, Percent: 85},
-		{Key: "demo:headset", Name: "Demo headset", Via: "2.4 GHz receiver", Kind: device.Headset, Percent: 12},
-		{Key: "demo:pad", Name: "Demo controller", Via: "USB cable", Kind: device.Gamepad, Percent: 40, Charging: true},
+		{Key: "demo:mouse", Name: "Demo mouse", Via: "2.4 GHz receiver", Kind: device.Mouse, Percent: 85, Brand: "logitech"},
+		{Key: "demo:headset", Name: "Demo headset", Via: "2.4 GHz receiver", Kind: device.Headset, Percent: 12, Brand: "apple", Detail: "Buds 20% / 12%, case 60%"},
+		{Key: "demo:pad", Name: "Demo controller", Via: "USB cable", Kind: device.Gamepad, Percent: 40, Charging: true, Brand: "playstation"},
 		{Key: "demo:kbd", Name: "Demo keyboard", Via: "Bluetooth", Kind: device.Keyboard, Percent: 100, Asleep: true},
 	}, nil
 }

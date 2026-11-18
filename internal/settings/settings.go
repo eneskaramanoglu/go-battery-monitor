@@ -23,6 +23,8 @@ type Settings struct {
 	Language string `json:"language"`
 	// MainMonitorOnly keeps the taskbar text off secondary monitors' taskbars.
 	MainMonitorOnly bool `json:"mainMonitorOnly"`
+	// NoBrandColors turns off maker colours on the taskbar (on by default).
+	NoBrandColors bool `json:"noBrandColors"`
 }
 
 // Display modes.

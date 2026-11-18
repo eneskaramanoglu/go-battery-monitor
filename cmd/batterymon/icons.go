@@ -58,7 +58,7 @@ func iconFor(s device.Status, threshold int) tray.Icon {
 }
 
 // barItemFor turns a device reading into its taskbar entry.
-func barItemFor(s device.Status, threshold int) tray.BarItem {
+func barItemFor(s device.Status, threshold int, brandColors bool) tray.BarItem {
 	ic := iconFor(s, threshold)
 	glyph := map[device.Kind]rune{
 		device.Mouse:    tray.GlyphMouse,
@@ -73,7 +73,12 @@ func barItemFor(s device.Status, threshold int) tray.BarItem {
 	if style == tray.Charging {
 		style = tray.Normal // the charging bolt carries the colour, the number stays readable
 	}
-	return tray.BarItem{Key: s.Key, Glyph: glyph, Text: levelText(s), Style: style, Charging: s.Charging}
+	item := tray.BarItem{Key: s.Key, Glyph: glyph, Text: levelText(s), Style: style, Charging: s.Charging, Fill: -1}
+	if a := brandAccent(s.Brand, brandColors); a != nil {
+		item.Accent = a
+		item.Fill = s.Percent // -1 (coarse level only) draws no bar
+	}
+	return item
 }
 
 // summary is the app icon tooltip in taskbar mode: one line per device.
