@@ -45,3 +45,32 @@ func TestRenderColumn(t *testing.T) {
 		t.Errorf("vertical keyAt = %q", got)
 	}
 }
+
+func TestHighlightPlate(t *testing.T) {
+	const w, h = 60, 40
+	px := make([]byte, w*h*4)
+	for i := 3; i < len(px); i += 4 {
+		px[i] = 1 // empty, hit-testable
+	}
+	px[(20*w+30)*4+3] = 255 // one opaque text pixel
+	px[(20*w+30)*4] = 255
+	highlight(px, w, h, span{20, 40}, false, 96, false, false)
+	at := func(x, y int) byte { return px[(y*w+x)*4+3] }
+	if at(30, 20) != 255 {
+		t.Error("text pixel lost its opacity")
+	}
+	if at(25, 20) != 30 {
+		t.Errorf("plate alpha = %d, want 30", at(25, 20))
+	}
+	if at(2, 20) != 1 || at(30, 2) != 1 {
+		t.Error("plate drawn outside the item")
+	}
+	if at(16, 6) != 1 {
+		t.Error("rounded corner not cut")
+	}
+	pressed := make([]byte, w*h*4)
+	highlight(pressed, w, h, span{20, 40}, false, 96, false, true)
+	if pressed[(20*w+25)*4+3] <= 30 {
+		t.Error("pressed plate not stronger")
+	}
+}

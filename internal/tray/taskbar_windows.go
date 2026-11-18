@@ -100,11 +100,23 @@ type bar struct {
 	vertical           bool    // column layout (spans hold y ranges)
 	tip                uintptr // tooltip control
 	hoverKey           string  // item the tooltip currently describes
+	hoverIdx           int     // item under the mouse (highlighted), -1 none
+	pressed            bool    // a mouse button is down on the hovered item
+	tracking           bool    // TrackMouseEvent armed for WM_MOUSELEAVE
 }
 
 // keyAt returns the key of the item under the client point (the nearest item when between
 // two): x on a horizontal taskbar, y on a vertical one.
 func (b *bar) keyAt(x, y int) string {
+	i := b.indexAt(x, y)
+	if i < 0 {
+		return ""
+	}
+	return b.items[i].Key
+}
+
+// indexAt returns the index of the item nearest to the client point, or -1.
+func (b *bar) indexAt(x, y int) int {
 	if b.vertical {
 		x = y
 	}
@@ -122,9 +134,9 @@ func (b *bar) keyAt(x, y int) string {
 		}
 	}
 	if best < 0 || best >= len(b.items) {
-		return ""
+		return -1
 	}
-	return b.items[best].Key
+	return best
 }
 
 // SetTaskbar shows items as text on the taskbar(s); nil removes it. allMonitors also puts a
@@ -233,7 +245,7 @@ func (t *Tray) applyBar() {
 			wanted[h.hwnd] = true
 			b := t.bars[h.hwnd]
 			if b == nil {
-				b = &bar{host: h}
+				b = &bar{host: h, hoverIdx: -1}
 				t.bars[h.hwnd] = b
 			}
 			b.vertical = vertical
@@ -331,6 +343,9 @@ func (b *bar) draw(tb, notify rect) {
 	if px == nil || width == 0 || height == 0 {
 		return
 	}
+	if b.hoverIdx >= 0 && b.hoverIdx < len(spans) {
+		highlight(px, width, height, spans[b.hoverIdx], b.vertical, int(dpi), taskbarIsLight(), b.pressed)
+	}
 	// HWND_TOP (0): on Windows 11 the taskbar content is a XAML layer
 	// (DesktopWindowContentBridge) that covers the whole taskbar; we must sit above it.
 	procSetWindowPos.Call(b.hwnd, 0, uintptr(x), uintptr(y), uintptr(width), uintptr(height), swpNoActivate|swpShowWindow)
@@ -410,6 +425,20 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 			t.barClick(hwnd, btn, int(pt.X), int(pt.Y))
 		}
 		return 0
+	case wmMouseLeave:
+		if t != nil {
+			if b := t.barFor(hwnd); b != nil {
+				b.leave()
+			}
+		}
+		return 0
+	case wmLButtonDown, wmRButtonDown:
+		if t != nil {
+			if b := t.barFor(hwnd); b != nil {
+				b.press(true)
+			}
+		}
+		return 0
 	case wmMouseMove:
 		if t != nil {
 			if b := t.barFor(hwnd); b != nil {
@@ -438,6 +467,9 @@ func barProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 }
 
 func (t *Tray) barClick(hwnd uintptr, button, x, y int) {
+	if b := t.barFor(hwnd); b != nil {
+		b.press(false)
+	}
 	switch button {
 	case 1:
 		call(t.cfg.OnLeftClick)
@@ -498,7 +530,8 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 	itemGap := textPx
 	var parts []part
 	spans := make([]span, len(items))
-	x := gap
+	edge := max(gap, 6*dpi/96) // room for the hover plate at both ends
+	x := edge
 	for i, it := range items {
 		spans[i].x0 = x
 		add := func(s string, f uintptr, after int) {
@@ -523,7 +556,7 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 			x += itemGap
 		}
 	}
-	width := x + gap
+	width := x + edge
 	for _, p := range parts {
 		spans[p.item].x1 = max(spans[p.item].x1, p.x+p.w)
 	}
