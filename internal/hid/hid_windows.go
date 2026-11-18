@@ -91,6 +91,160 @@ func Enumerate() ([]Collection, error) {
 	return out, nil
 }
 
+// Report types (HIDP_REPORT_TYPE).
+const (
+	InputReport   = 0
+	OutputReport  = 1
+	FeatureReport = 2
+)
+
+// ValueCap describes one value field of a collection (from HidP_GetValueCaps).
+type ValueCap struct {
+	ReportType     int
+	ReportID       byte
+	UsagePage      uint16
+	Usage          uint16 // first usage when the field is a range
+	LinkCollection uint16
+	BitSize        uint16
+	ReportCount    uint16
+	LogicalMin     int32
+	LogicalMax     int32
+}
+
+// HIDP_VALUE_CAPS (hidpi.h), 72 bytes.
+type hidpValueCaps struct {
+	UsagePage         uint16
+	ReportID          uint8
+	IsAlias           uint8
+	BitField          uint16
+	LinkCollection    uint16
+	LinkUsage         uint16
+	LinkUsagePage     uint16
+	IsRange           uint8
+	IsStringRange     uint8
+	IsDesignatorRange uint8
+	IsAbsolute        uint8
+	HasNull           uint8
+	Reserved          uint8
+	BitSize           uint16
+	ReportCount       uint16
+	Reserved2         [5]uint16
+	UnitsExp          uint32
+	Units             uint32
+	LogicalMin        int32
+	LogicalMax        int32
+	PhysicalMin       int32
+	PhysicalMax       int32
+	Usage             uint16 // Range.UsageMin or NotRange.Usage
+	Rest              [7]uint16
+}
+
+var (
+	procGetValueCaps  = modHID.NewProc("HidP_GetValueCaps")
+	procGetUsageValue = modHID.NewProc("HidP_GetUsageValue")
+)
+
+// preparsed holds a collection's report descriptor in Windows' parsed form.
+type preparsed struct {
+	pp   uintptr
+	caps hidpCaps
+}
+
+func loadPreparsed(h windows.Handle) (*preparsed, bool) {
+	p := &preparsed{}
+	if r, _, _ := procGetPreparsedData.Call(uintptr(h), uintptr(unsafe.Pointer(&p.pp))); r == 0 {
+		return nil, false
+	}
+	if st, _, _ := procGetCaps.Call(p.pp, uintptr(unsafe.Pointer(&p.caps))); st != hidpStatusSuccess {
+		procFreePreparsedData.Call(p.pp)
+		return nil, false
+	}
+	return p, true
+}
+
+func (p *preparsed) free() { procFreePreparsedData.Call(p.pp) }
+
+func (p *preparsed) valueCaps() []ValueCap {
+	var out []ValueCap
+	for _, rt := range []struct {
+		typ int
+		n   uint16
+	}{{InputReport, p.caps.NumberInputValueCaps}, {FeatureReport, p.caps.NumberFeatureValueCaps}} {
+		if rt.n == 0 {
+			continue
+		}
+		raw := make([]hidpValueCaps, rt.n)
+		n := rt.n
+		if st, _, _ := procGetValueCaps.Call(uintptr(rt.typ), uintptr(unsafe.Pointer(&raw[0])), uintptr(unsafe.Pointer(&n)), p.pp); st != hidpStatusSuccess {
+			continue
+		}
+		for _, v := range raw[:n] {
+			out = append(out, ValueCap{
+				ReportType: rt.typ, ReportID: v.ReportID, UsagePage: v.UsagePage, Usage: v.Usage,
+				LinkCollection: v.LinkCollection, BitSize: v.BitSize, ReportCount: v.ReportCount,
+				LogicalMin: v.LogicalMin, LogicalMax: v.LogicalMax,
+			})
+		}
+	}
+	return out
+}
+
+// ValueCaps lists the input and feature value fields of a collection without opening it
+// for reading or writing.
+func ValueCaps(c Collection) []ValueCap {
+	p16, err := windows.UTF16PtrFromString(c.Path)
+	if err != nil {
+		return nil
+	}
+	h, err := windows.CreateFile(p16, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		return nil
+	}
+	defer windows.CloseHandle(h)
+	p, ok := loadPreparsed(h)
+	if !ok {
+		return nil
+	}
+	defer p.free()
+	return p.valueCaps()
+}
+
+// ReadValue reads a report of the field's type and id (GetFeature / GetInputReport, both
+// read-only requests) and extracts the field with HidP_GetUsageValue.
+func (d *Device) ReadValue(v ValueCap) (uint32, error) {
+	p, ok := loadPreparsed(d.h)
+	if !ok {
+		return 0, errors.New("hid: no preparsed data")
+	}
+	defer p.free()
+	var buf []byte
+	switch v.ReportType {
+	case FeatureReport:
+		buf = d.fbuf
+		clear(buf)
+		buf[0] = v.ReportID
+		if r, _, err := procGetFeature.Call(uintptr(d.h), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r == 0 {
+			return 0, err
+		}
+	case InputReport:
+		buf = d.rbuf
+		clear(buf)
+		buf[0] = v.ReportID
+		if r, _, err := procGetInputReport.Call(uintptr(d.h), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r == 0 {
+			return 0, err
+		}
+	default:
+		return 0, errors.New("hid: unsupported report type")
+	}
+	var val uint32
+	st, _, _ := procGetUsageValue.Call(uintptr(v.ReportType), uintptr(v.UsagePage), uintptr(v.LinkCollection), uintptr(v.Usage),
+		uintptr(unsafe.Pointer(&val)), p.pp, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if st != hidpStatusSuccess {
+		return 0, errors.New("hid: usage value not in report")
+	}
+	return val, nil
+}
+
 // Unopenable lists HID interface paths that are present but could not be described
 // (for --dump: such devices need another way in, or are held exclusively).
 func Unopenable() []string {
