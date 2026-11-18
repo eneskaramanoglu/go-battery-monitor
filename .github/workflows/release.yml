@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds amd64 + arm64 exes and publishes a GitHub release.
+# Pushing a tag like v0.2.0 builds amd64 + arm64 exes and publishes a GitHub release.
 on:
   push:
     tags: ["v*.*.*"]
@@ -29,14 +29,17 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ github.ref_name }}"
-          ./build.ps1 -Version $v -Arch amd64 -Out dist/batterymon.exe
-          ./build.ps1 -Version $v -Arch arm64 -Out dist/batterymon-arm64.exe
+          # The exe installs itself on first start, so the main download is called Setup.
+          ./build.ps1 -Version $v -Arch amd64 -Out dist/BatteryMonitor-Setup.exe
+          ./build.ps1 -Version $v -Arch arm64 -Out dist/BatteryMonitor-Setup-arm64.exe
           foreach ($a in 'amd64', 'arm64') {
-            $exe = if ($a -eq 'amd64') { 'dist/batterymon.exe' } else { 'dist/batterymon-arm64.exe' }
-            $dir = "dist/go-battery-monitor-$v-windows-$a"
+            $exe = if ($a -eq 'amd64') { 'dist/BatteryMonitor-Setup.exe' } else { 'dist/BatteryMonitor-Setup-arm64.exe' }
+            $dir = "dist/BatteryMonitor-$v-portable-$a"
             New-Item -ItemType Directory -Force $dir | Out-Null
             Copy-Item $exe "$dir/batterymon.exe"
             Copy-Item LICENSE, README.md, THIRD_PARTY_NOTICES.txt $dir
+            # portable.txt next to the exe: never ask to install, run from this folder.
+            Set-Content "$dir/portable.txt" "Portable mode: delete this file to be offered an installation."
             Compress-Archive -Path "$dir/*" -DestinationPath "$dir.zip"
           }
           Get-FileHash dist/*.zip, dist/*.exe -Algorithm SHA256 |
@@ -48,6 +51,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > notes.md <<'EOF'
+          **Download `BatteryMonitor-Setup.exe`** and run it. It asks once whether to install for your
+          user (Start menu entry, uninstaller in Settings > Apps, no administrator rights), then shows
+          your devices' battery levels on the taskbar. Windows may warn that the file is not signed:
+          choose *More info > Run anyway*.
+
+          - Windows on ARM: `BatteryMonitor-Setup-arm64.exe`
+          - No installation: the `portable` zip
+          EOF
           gh release create "${{ github.ref_name }}" \
-            dist/*.zip dist/batterymon.exe dist/batterymon-arm64.exe dist/SHA256SUMS.txt \
-            --title "${{ github.ref_name }}" --generate-notes
+            dist/BatteryMonitor-Setup.exe dist/BatteryMonitor-Setup-arm64.exe dist/*.zip dist/SHA256SUMS.txt \
+            --title "Battery Monitor ${{ github.ref_name }}" --notes-file notes.md --generate-notes
