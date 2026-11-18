@@ -70,6 +70,9 @@ type BarItem struct {
 	Accent *Accent
 	// Fill is the level drawn in the bar, 0..100; -1 draws no bar.
 	Fill int
+	// Caption is a tiny label (up to 3 characters) drawn at the glyph's lower right, to tell
+	// two devices of the same kind apart.
+	Caption string
 }
 
 // Accent is a colour with a shade for dark and for light taskbars.
@@ -438,6 +441,8 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 	textPx := max(height*30/100, 11*dpi/96)
 	textFont := createFont("Segoe UI Semibold", textPx, 600)
 	glyphFont := createFont("Segoe Fluent Icons", textPx+textPx/6, 400)
+	captionFont := createFont("Segoe UI Semibold", max(textPx*55/100, 8*dpi/96), 600)
+	defer procDeleteObject.Call(captionFont)
 	if !fontHasGlyphs(hdc, glyphFont) {
 		procDeleteObject.Call(glyphFont)
 		glyphFont = createFont("Segoe MDL2 Assets", textPx+textPx/6, 400)
@@ -464,7 +469,12 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 			parts = append(parts, part{u, f, x, w, i})
 			x += w + after
 		}
-		add(string(it.Glyph), glyphFont, gap)
+		if it.Caption != "" {
+			add(string(it.Glyph), glyphFont, 0)
+			add(it.Caption, captionFont, gap) // drawn low, like a subscript
+		} else {
+			add(string(it.Glyph), glyphFont, gap)
+		}
 		if it.Charging {
 			add(it.Text, textFont, 1)
 			add(string(glyphCharging), glyphFont, 0)
@@ -494,8 +504,12 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 	for _, p := range parts {
 		procSelectObject.Call(hdc, p.font)
 		r := rect{int32(p.x), 0, int32(p.x + p.w + 2), int32(height)}
-		procDrawText.Call(hdc, uintptr(unsafe.Pointer(&p.s[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)),
-			dtVCenter|dtSingleLine|dtNoPrefix)
+		flags := uintptr(dtVCenter | dtSingleLine | dtNoPrefix)
+		if p.font == captionFont {
+			r.Bottom = int32(height/2 + textPx*3/4) // sit on the glyph's lower edge
+			flags = dtBottom | dtSingleLine | dtNoPrefix
+		}
+		procDrawText.Call(hdc, uintptr(unsafe.Pointer(&p.s[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)), flags)
 	}
 	procGdiFlush.Call()
 	procSelectObject.Call(hdc, old)
@@ -512,7 +526,7 @@ func renderBar(items []BarItem, height, dpi int, light bool) ([]byte, int, []spa
 		switch {
 		case it.Charging && p.font == glyphFont && p.s[0] == glyphCharging:
 			c = palette(Charging, light)
-		case it.Accent != nil && it.Style == Normal && p.font == glyphFont:
+		case it.Accent != nil && it.Style == Normal && (p.font == glyphFont || p.font == captionFont):
 			c = it.Accent.pick(light) // brand-coloured device glyph
 		}
 		for cx := max(0, p.x-1); cx < min(width, p.x+p.w+2); cx++ {

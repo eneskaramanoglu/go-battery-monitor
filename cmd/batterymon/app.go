@@ -121,8 +121,11 @@ func (a *app) render() {
 	// Falls back to per-device tray icons when the taskbar is vertical or missing.
 	if cfg.Display == settings.DisplayTaskbar && tray.TaskbarAvailable() {
 		items := make([]tray.BarItem, 0, len(visible))
-		for _, s := range visible {
-			items = append(items, barItemFor(s, cfg.LowThreshold, !cfg.NoBrandColors))
+		caps := captions(visible)
+		for i, s := range visible {
+			it := barItemFor(s, cfg.LowThreshold, !cfg.NoBrandColors)
+			it.Caption = caps[i]
+			items = append(items, it)
 		}
 		if len(visible) > 0 {
 			tip = summary(visible)

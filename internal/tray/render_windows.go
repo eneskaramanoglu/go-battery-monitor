@@ -57,6 +57,7 @@ const (
 	smCxSmIcon       = 49
 	dtCenter         = 0x1
 	dtVCenter        = 0x4
+	dtBottom         = 0x8
 	dtSingleLine     = 0x20
 	dtNoPrefix       = 0x800
 	transparentBk    = 1
