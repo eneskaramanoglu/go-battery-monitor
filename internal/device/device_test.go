@@ -32,6 +32,22 @@ func TestClaimHidesProductFromLaterDrivers(t *testing.T) {
 	}
 }
 
+func TestFilterCollections(t *testing.T) {
+	cols := []hid.Collection{
+		{VendorID: 0x373B, ProductID: 0x1278},
+		{VendorID: 0x1234, ProductID: 0xABCD},
+		{VendorID: 0x056A, ProductID: 0x0001},                  // Wacom tablet
+		{VendorID: 0x9999, ProductID: 0x0001, UsagePage: 0x0D}, // any digitizer
+	}
+	got := filterCollections(cols, []string{" 1234:abcd ", "garbage"})
+	if len(got) != 1 || got[0].ProductID != 0x1278 {
+		t.Fatalf("filtered = %+v", got)
+	}
+	if _, _, ok := ParseVIDPID("12345:1"); ok {
+		t.Fatal("out of range VID accepted")
+	}
+}
+
 func TestStatusString(t *testing.T) {
 	s := Status{Name: "Mouse", Via: "USB", Percent: -1}
 	if got := s.String(); got == "" {

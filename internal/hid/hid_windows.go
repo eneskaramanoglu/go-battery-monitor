@@ -91,6 +91,22 @@ func Enumerate() ([]Collection, error) {
 	return out, nil
 }
 
+// Unopenable lists HID interface paths that are present but could not be described
+// (for --dump: such devices need another way in, or are held exclusively).
+func Unopenable() []string {
+	paths, err := windows.CM_Get_Device_Interface_List("", &hidGUID, windows.CM_GET_DEVICE_INTERFACE_LIST_PRESENT)
+	if err != nil {
+		return nil
+	}
+	var bad []string
+	for _, p := range paths {
+		if _, ok := describe(p); !ok {
+			bad = append(bad, p)
+		}
+	}
+	return bad
+}
+
 func describe(path string) (Collection, bool) {
 	c := Collection{Path: path, Interface: interfaceNumber(path)}
 	p16, err := windows.UTF16PtrFromString(path)

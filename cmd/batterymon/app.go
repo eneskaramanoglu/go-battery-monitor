@@ -62,11 +62,14 @@ func (a *app) refresh() {
 	a.polling = true
 	a.mu.Unlock()
 	go func() {
-		st, err := poll()
+		a.mu.Lock()
+		cfg := a.cfg
+		a.mu.Unlock()
+		st, err := poll(cfg)
 		a.mu.Lock()
 		a.polling = false
 		a.last, a.lastErr = st, err
-		cfg := a.cfg
+		cfg = a.cfg
 		a.mu.Unlock()
 
 		// Always run the tracker so turning notifications on later does not fire stale warnings.
@@ -203,6 +206,10 @@ func (a *app) menu(target string) []tray.MenuItem {
 		{Title: "Low battery level", Children: thresholds},
 		{Title: "Low battery notifications", Checked: cfg.Notify, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Notify = !c.Notify })
+		}},
+		{Title: "Experimental drivers (untested devices)", Checked: cfg.Experimental, OnClick: func() {
+			a.update(func(c *settings.Settings) { c.Experimental = !c.Experimental })
+			a.refresh()
 		}},
 		{Title: "Start with Windows", Checked: autostart.Enabled(), OnClick: func() {
 			autostart.Set(!autostart.Enabled())

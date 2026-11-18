@@ -4,6 +4,7 @@ package device
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/hid"
 )
@@ -107,14 +108,73 @@ func Register(d Driver) { drivers = append(drivers, d) }
 // Drivers lists the registered drivers in run order.
 func Drivers() []Driver { return drivers }
 
+// Experimental is implemented by drivers that were written from documentation but never
+// tested on real hardware; they only run when Options.Experimental is set.
+type Experimental interface {
+	Experimental() bool
+}
+
+// IsExperimental reports whether a driver is marked experimental.
+func IsExperimental(d Driver) bool {
+	e, ok := d.(Experimental)
+	return ok && e.Experimental()
+}
+
+// Options tune one poll.
+type Options struct {
+	// Ignore lists products the app must never open, as "VID:PID" in hex ("28BD:0947").
+	Ignore []string
+	// Experimental enables drivers that are not tested on real hardware.
+	Experimental bool
+}
+
+// tabletVendors make drawing tablets, which some drivers misbehave with when their HID
+// interfaces are opened by another program; they never carry a battery we could read.
+var tabletVendors = map[uint16]bool{
+	0x056A: true, // Wacom
+	0x256C: true, // Huion / Gaomon
+	0x28BD: true, // XP-Pen
+	0x5543: true, // UC-Logic
+}
+
+// ParseVIDPID parses "VID:PID" in hex.
+func ParseVIDPID(s string) (vid, pid uint16, ok bool) {
+	var v, p uint32
+	if n, err := fmt.Sscanf(strings.TrimSpace(s), "%x:%x", &v, &p); n != 2 || err != nil || v > 0xFFFF || p > 0xFFFF {
+		return 0, 0, false
+	}
+	return uint16(v), uint16(p), true
+}
+
+// filterCollections drops ignored products and drawing tablets.
+func filterCollections(cols []hid.Collection, ignore []string) []hid.Collection {
+	skip := map[vidpid]bool{}
+	for _, s := range ignore {
+		if v, p, ok := ParseVIDPID(s); ok {
+			skip[vidpid{v, p}] = true
+		}
+	}
+	out := cols[:0:0]
+	for _, c := range cols {
+		if skip[vidpid{c.VendorID, c.ProductID}] || tabletVendors[c.VendorID] || c.UsagePage == 0x000D {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 // PollAll enumerates HID once and runs every driver over it. Blocking: call it off the UI thread.
-func PollAll() ([]Status, error) {
+func PollAll(opts Options) ([]Status, error) {
 	cols, err := hid.Enumerate()
 	if err != nil {
 		return nil, err
 	}
-	ctx := &PollContext{Collections: cols, claimed: map[vidpid]bool{}}
+	ctx := &PollContext{Collections: filterCollections(cols, opts.Ignore), claimed: map[vidpid]bool{}}
 	for _, d := range drivers {
+		if IsExperimental(d) && !opts.Experimental {
+			continue
+		}
 		func() {
 			defer func() { recover() }() // one broken driver must not take the app down
 			d.Poll(ctx)

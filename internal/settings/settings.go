@@ -15,6 +15,10 @@ type Settings struct {
 	Notify       bool     `json:"notify"`       // show a notification when a device gets low
 	Hidden       []string `json:"hidden"`       // device keys whose icon is hidden
 	Display      string   `json:"display"`      // DisplayTaskbar or DisplayTray
+	// Ignore lists products the app must never open, "VID:PID" in hex (edit the JSON file).
+	Ignore []string `json:"ignore"`
+	// Experimental enables drivers that were never tested on real hardware.
+	Experimental bool `json:"experimental"`
 }
 
 // Display modes.
