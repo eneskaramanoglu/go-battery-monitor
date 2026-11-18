@@ -38,7 +38,13 @@ seviyededir. Sürücüler eklendikçe hedef **< 8 MB** özel bellek. Bunu koruma
 
 ## Görünüm
 
-**Görev çubuğunda (varsayılan):** bildirim alanının hemen solunda `🎧 40%  🖱 85%` biçiminde, Windows'un kendi ikon fontuyla (Segoe Fluent Icons / MDL2). Şarj olurken yeşil şimşek, düşük pilde kırmızı, uyuyan cihaz gri. Görev çubuğuna gömülü şeffaf bir pencere (`UpdateLayeredWindow`) kullanılır; tıklayınca menü açılır. Görev çubuğu dikeyse otomatik olarak tepsi ikonlarına geçer.
+**Görev çubuğunda (varsayılan):** bildirim alanının hemen solunda `🎧 40%  🖱 85%` biçiminde, Windows'un kendi ikon fontuyla (Segoe Fluent Icons / MDL2). Şarj olurken yeşil şimşek, düşük pilde kırmızı, uyuyan cihaz gri. Görev çubuğuna gömülü şeffaf bir pencere (`UpdateLayeredWindow`) kullanılır; tıklayınca menü açılır, bir cihaza sağ tıklayınca o cihaz gizlenebilir.
+
+- **Birden fazla monitör:** her monitörün görev çubuğunda (ikincil çubuklarda saatin solunda, ~120 px bırakılarak). Menü: **Göster > Tüm monitörler / Yalnızca ana monitör**.
+- **Marka renkleri:** Logitech, PlayStation, Xbox ve Apple cihazlarında simge marka renginde, yüzdenin altında ince bir seviye çubuğu. Menü: **Marka renkleri**.
+- **Aynı türden iki cihaz:** simgenin sağ altında en fazla 3 harflik etiket (`MX`, `G50`) ya da `1`, `2`.
+- **Dikey görev çubuğu:** bildirim alanının üstünde sütun; sığmayan satırlarda simge üstte, yüzde altta.
+- **Dil:** Türkçe ve İngilizce; varsayılan olarak Windows'un dilini izler. Menü: **Dil**.
 
 **Tepsi ikonları:** Her cihaz kendi tepsi ikonunda yüzdesini gösterir: normal (temaya göre beyaz/siyah), %15 ve altı kırmızı, şarj olurken yeşil, uyurken gri. Kaba seviye bildiren cihazlarda baş harf (E/L/M/F). İkonlar GDI ile çizilir; tema ve DPI değişince yeniden çizilir. Önizleme: `go run ./tools/iconpreview out.png`.
 
@@ -140,4 +146,5 @@ git push origin v0.1.0
 - [x] Xbox kumandalarında gerçek yüzde, AirPods / Beats, genel HID pil standardı
 - [x] Logitech HID++ (deneysel)
 - [ ] DualShock 4
-- [ ] Ayarlar penceresi, çoklu dil (TR / EN)
+- [x] Türkçe / İngilizce, birden fazla monitör, marka renkleri, aynı türden cihaz etiketleri, dikey görev çubuğu, kendi kendini kuran exe
+- [ ] Ayarlar penceresi
