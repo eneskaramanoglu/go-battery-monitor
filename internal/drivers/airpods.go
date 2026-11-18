@@ -29,6 +29,7 @@ import (
 	"github.com/saltosystems/winrt-go/windows/storage/streams"
 
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/i18n"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/pnp"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/winrt"
 )
@@ -100,14 +101,14 @@ func (p proximity) status(key, name string) (device.Status, bool) {
 	if lowest < 0 {
 		return device.Status{}, false
 	}
-	detail := "Buds " + strings.Join(parts, " / ")
+	detail := i18n.T("Buds") + " " + strings.Join(parts, " / ")
 	if len(parts) == 1 {
 		detail = "" // headphones (AirPods Max, Beats): one battery
 	}
 	if p.caseLevel >= 0 {
-		c := "case " + itoa(p.caseLevel) + "%"
+		c := i18n.T("case") + " " + itoa(p.caseLevel) + "%"
 		if p.caseCharging {
-			c += " (charging)"
+			c += " (" + i18n.T("charging") + ")"
 		}
 		if detail == "" {
 			detail = c

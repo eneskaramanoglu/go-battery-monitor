@@ -19,6 +19,8 @@ type Settings struct {
 	Ignore []string `json:"ignore"`
 	// Experimental enables drivers that were never tested on real hardware.
 	Experimental bool `json:"experimental"`
+	// Language is "" (follow Windows) or a code from i18n.Languages.
+	Language string `json:"language"`
 }
 
 // Display modes.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/autostart"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/device"
+	"github.com/eneskaramanoglu/go-battery-monitor/internal/i18n"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/settings"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/tray"
 	"github.com/eneskaramanoglu/go-battery-monitor/internal/version"
@@ -29,8 +30,9 @@ type app struct {
 
 func runTray() {
 	a := &app{low: newLowTracker(), cfg: settings.Load()}
+	i18n.Set(a.cfg.Language)
 	err := tray.Run(tray.Config{
-		Tooltip:        "Battery monitor: reading devices...",
+		Tooltip:        i18n.T("Battery monitor: reading devices..."),
 		Menu:           a.menu,
 		OnLeftClick:    a.refresh,
 		OnDeviceChange: func() { a.refreshSoon(2 * time.Second) },
@@ -76,7 +78,7 @@ func (a *app) refresh() {
 		lows := a.low.check(st, cfg.LowThreshold)
 		if cfg.Notify {
 			for _, s := range lows {
-				a.t.Notify(s.Key, "Low battery: "+s.Name, s.Name+" is at "+s.LevelText()+".")
+				a.t.Notify(s.Key, i18n.F("Low battery: %s", name(s)), i18n.F("%s is at %s.", name(s), levelText(s)))
 			}
 		}
 		a.render()
@@ -105,14 +107,14 @@ func (a *app) render() {
 			visible = append(visible, s)
 		}
 	}
-	tip := "Battery monitor"
+	tip := i18n.T("Battery monitor")
 	switch {
 	case err != nil:
 		tip += ": " + err.Error()
 	case len(st) == 0:
-		tip += ": no supported device"
+		tip += ": " + i18n.T("no supported device")
 	case len(visible) == 0:
-		tip += ": all devices hidden"
+		tip += ": " + i18n.T("all devices hidden")
 	}
 
 	// Taskbar mode: text on the taskbar, a single app icon in the tray for the menu.
@@ -160,8 +162,8 @@ func (a *app) menu(target string) []tray.MenuItem {
 		if s.Key == target && target != "" {
 			key := s.Key
 			head = []tray.MenuItem{
-				{Title: s.Name + "  " + s.LevelText(), Disabled: true},
-				{Title: "Hide this device", OnClick: func() {
+				{Title: name(s) + "  " + levelText(s), Disabled: true},
+				{Title: i18n.T("Hide this device"), OnClick: func() {
 					a.update(func(c *settings.Settings) { c.SetHidden(key, true) })
 				}},
 				{},
@@ -173,13 +175,13 @@ func (a *app) menu(target string) []tray.MenuItem {
 	for _, s := range st {
 		key, hidden := s.Key, cfg.IsHidden(s.Key)
 		devices = append(devices, tray.MenuItem{
-			Title:   s.Name + "  (" + s.LevelText() + ")",
+			Title:   name(s) + "  (" + levelText(s) + ")",
 			Checked: !hidden,
 			OnClick: func() { a.update(func(c *settings.Settings) { c.SetHidden(key, !hidden) }) },
 		})
 	}
 	if len(devices) == 0 {
-		devices = []tray.MenuItem{{Title: "No device found", Disabled: true}}
+		devices = []tray.MenuItem{{Title: i18n.T("No device found"), Disabled: true}}
 	}
 
 	var thresholds []tray.MenuItem
@@ -192,30 +194,47 @@ func (a *app) menu(target string) []tray.MenuItem {
 	}
 
 	return append(head, []tray.MenuItem{
-		{Title: "Battery monitor " + version.String(), Disabled: true},
+		{Title: i18n.T("Battery monitor") + " " + version.String(), Disabled: true},
 		{},
 		// How the levels are shown: directly in the menu so it is one right click away.
-		{Title: "Show on the taskbar", Checked: cfg.Display == settings.DisplayTaskbar, OnClick: func() {
+		{Title: i18n.T("Show on the taskbar"), Checked: cfg.Display == settings.DisplayTaskbar, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTaskbar })
 		}},
-		{Title: "Show as tray icons", Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
+		{Title: i18n.T("Show as tray icons"), Checked: cfg.Display == settings.DisplayTray, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Display = settings.DisplayTray })
 		}},
 		{},
-		{Title: "Devices", Children: devices},
-		{Title: "Low battery level", Children: thresholds},
-		{Title: "Low battery notifications", Checked: cfg.Notify, OnClick: func() {
+		{Title: i18n.T("Devices"), Children: devices},
+		{Title: i18n.T("Low battery level"), Children: thresholds},
+		{Title: i18n.T("Low battery notifications"), Checked: cfg.Notify, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Notify = !c.Notify })
 		}},
-		{Title: "Experimental drivers (untested devices)", Checked: cfg.Experimental, OnClick: func() {
+		{Title: i18n.T("Experimental drivers (untested devices)"), Checked: cfg.Experimental, OnClick: func() {
 			a.update(func(c *settings.Settings) { c.Experimental = !c.Experimental })
 			a.refresh()
 		}},
-		{Title: "Start with Windows", Checked: autostart.Enabled(), OnClick: func() {
+		{Title: i18n.T("Start with Windows"), Checked: autostart.Enabled(), OnClick: func() {
 			autostart.Set(!autostart.Enabled())
 		}},
+		{Title: i18n.T("Language"), Children: a.languageMenu(cfg)},
 		{},
-		{Title: "Refresh now", OnClick: a.refresh},
-		{Title: "Exit", OnClick: func() { a.t.Quit() }},
+		{Title: i18n.T("Refresh now"), OnClick: a.refresh},
+		{Title: i18n.T("Exit"), OnClick: func() { a.t.Quit() }},
 	}...)
+}
+
+// languageMenu lists Automatic plus every language; choosing one applies it at once.
+func (a *app) languageMenu(cfg settings.Settings) []tray.MenuItem {
+	set := func(code string) func() {
+		return func() {
+			i18n.Set(code)
+			a.update(func(c *settings.Settings) { c.Language = code })
+			a.refresh() // device names and levels are rebuilt in the new language
+		}
+	}
+	items := []tray.MenuItem{{Title: i18n.T("Automatic"), Checked: cfg.Language == "", OnClick: set("")}}
+	for _, l := range i18n.Languages {
+		items = append(items, tray.MenuItem{Title: l.Name, Checked: cfg.Language == l.Code, OnClick: set(l.Code)})
+	}
+	return items
 }
